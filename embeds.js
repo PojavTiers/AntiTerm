@@ -1,19 +1,27 @@
 const { EmbedBuilder } = require('discord.js');
 
-// Helper to grab custom emojis from the server
-function getEmoji(client, name, fallback) {
-    const emoji = client.emojis.cache.find(e => e.name === name);
+// Look ONLY in the current server's emojis (for Embed text)
+function getEmoji(guild, name, fallback) {
+    if (!guild) return fallback;
+    const emoji = guild.emojis.cache.find(e => e.name.toLowerCase().startsWith(name.toLowerCase()));
     return emoji ? `<:${emoji.name}:${emoji.id}>` : fallback;
 }
 
-function createEmbed(type, title, description, client, category = 'General', page = null, totalPages = null) {
+// For Discord Buttons (they need the object, not the text format)
+function getButtonEmoji(guild, name, fallback) {
+    if (!guild) return fallback;
+    const emoji = guild.emojis.cache.find(e => e.name.toLowerCase().startsWith(name.toLowerCase()));
+    return emoji || fallback;
+}
+
+function createEmbed(type, title, description, guild, client, category = 'General', page = null, totalPages = null) {
     let color = '#5865F2'; // Default Blue
     let icon = 'ℹ️';
 
-    if (type === 'success') { color = '#57F287'; icon = getEmoji(client, 'success', '✅'); }
-    if (type === 'error') { color = '#ED4245'; icon = getEmoji(client, 'error', '❌'); }
-    if (type === 'warning') { color = '#FEE75C'; icon = getEmoji(client, 'warning', '⚠️'); }
-    if (type === 'shield') { color = '#2B2D31'; icon = getEmoji(client, 'shield', '🛡️'); }
+    if (type === 'success') { color = '#57F287'; icon = getEmoji(guild, 'success', '✅'); }
+    if (type === 'error') { color = '#ED4245'; icon = getEmoji(guild, 'error', '❌'); }
+    if (type === 'warning') { color = '#FEE75C'; icon = getEmoji(guild, 'warning', '⚠️'); }
+    if (type === 'shield') { color = '#2B2D31'; icon = getEmoji(guild, 'shield', '🛡️'); }
 
     let footerText = `AntiTerm Security | ${category}`;
     if (page && totalPages) {
@@ -30,9 +38,10 @@ function createEmbed(type, title, description, client, category = 'General', pag
 }
 
 module.exports = {
-  success: (title, desc, client, cat) => createEmbed('success', title, desc, client, cat),
-  error: (title, desc, client, cat) => createEmbed('error', title, desc, client, cat),
-  warning: (title, desc, client, cat) => createEmbed('warning', title, desc, client, cat),
-  info: (title, desc, client, cat) => createEmbed('info', title, desc, client, cat),
-  shield: (title, desc, client, cat, page, total) => createEmbed('shield', title, desc, client, cat, page, total)
+  success: (title, desc, guild, client, cat) => createEmbed('success', title, desc, guild, client, cat),
+  error: (title, desc, guild, client, cat) => createEmbed('error', title, desc, guild, client, cat),
+  warning: (title, desc, guild, client, cat) => createEmbed('warning', title, desc, guild, client, cat),
+  info: (title, desc, guild, client, cat) => createEmbed('info', title, desc, guild, client, cat),
+  shield: (title, desc, guild, client, cat, page, total) => createEmbed('shield', title, desc, guild, client, cat, page, total),
+  getButtonEmoji: getButtonEmoji
 };
