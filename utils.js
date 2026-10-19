@@ -54,6 +54,7 @@ async function sendMessage(target, type, title, fields, guild, client, s) {
     }
 
     if (s.useEmbeds) {
+        // FIXED: correctly passing client to the embed builder
         const embed = await embeds[type](title, formattedDesc, guild, client);
         return target.reply({ embeds: [embed] });
     } else {
