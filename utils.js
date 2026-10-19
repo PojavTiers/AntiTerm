@@ -1,5 +1,9 @@
 const levenshtein = require('fast-levenshtein');
 const embeds = require('./embeds.js');
+const ffmpeg = require('fluent-ffmpeg');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
 
 const EXTREME_SLURS = ['put_racial_slurs_here', 'put_extreme_slurs_here']; 
 const MEDIUM_INSULTS = ['asshole', 'bastard', 'retard', 'whore', 'slut'];
@@ -89,14 +93,44 @@ async function applyPunishment(member, type, durationStr, reason, message, clien
     }
 }
 
-// NEW: Translates the mode into an AI Threshold
 function getNsfwThreshold(mode) {
     if (mode === 'basic') return 0.7;
     if (mode === 'advanced') return 0.3;
-    return 0.5; // Moderate default
+    return 0.5; 
+}
+
+// --- NEW: FAST VIDEO COLLAGE GENERATOR ---
+async function createVideoCollage(videoBuffer) {
+    const tempVideoPath = path.join(os.tmpdir(), `vid_${Date.now()}.mp4`);
+    const outputPath = path.join(os.tmpdir(), `collage_${Date.now()}.jpg`);
+    fs.writeFileSync(tempVideoPath, videoBuffer);
+
+    try {
+        await new Promise((resolve, reject) => {
+            ffmpeg(tempVideoPath)
+                .on('end', resolve)
+                .on('error', reject)
+                // This filter grabs 4 frames and puts them in a 2x2 grid
+                .outputOptions([
+                    '-vf', 'select=\'gte(n,1)\',scale=320:240,tile=2x2',
+                    '-frames:v', '1',
+                    '-q:v', '5' // Lower quality = faster upload/scan
+                ])
+                .save(outputPath);
+        });
+
+        const collageBuffer = fs.readFileSync(outputPath);
+        return collageBuffer;
+    } catch (err) {
+        console.error("FFmpeg Collage Error:", err);
+        return null;
+    } finally {
+        if (fs.existsSync(tempVideoPath)) fs.unlinkSync(tempVideoPath);
+        if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
+    }
 }
 
 module.exports = {
-    normalise, checkViolation, sendMessage, isAuthorized, applyPunishment, getNsfwThreshold,
+    normalise, checkViolation, sendMessage, isAuthorized, applyPunishment, getNsfwThreshold, createVideoCollage,
     EXTREME_SLURS, MEDIUM_INSULTS, SAFE_WORDS
 };
