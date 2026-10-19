@@ -9,16 +9,16 @@ function getEmoji(guild, name, fallback) {
 function getButtonEmoji(guild, name, fallback) {
     if (!guild) return fallback;
     const emoji = guild.emojis.cache.find(e => e.name.toLowerCase().startsWith(name.toLowerCase()));
-    // FIX: Return just the ID string, otherwise ButtonBuilder crashes
     return emoji ? emoji.id : fallback; 
 }
 
 function createEmbed(type, title, description, guild, client, category = 'General', page = null, totalPages = null) {
-    let color = '#5865F2'; 
+    let color = '#5865F2'; // Default Blue
     let icon = 'ℹ️';
 
-    if (type === 'success') { color = '#57F287'; icon = getEmoji(guild, 'success', '✅'); }
-    if (type === 'error') { color = '#ED4245'; icon = getEmoji(guild, 'error', '❌'); }
+    // UPDATED COLORS HERE
+    if (type === 'success') { color = '#00FF00'; icon = getEmoji(guild, 'success', '✅'); } // Lime Green
+    if (type === 'error') { color = '#FF0000'; icon = getEmoji(guild, 'error', '❌'); } // Bright Red
     if (type === 'warning') { color = '#FEE75C'; icon = getEmoji(guild, 'warning', '⚠️'); }
     if (type === 'shield') { color = '#2B2D31'; icon = getEmoji(guild, 'shield', '🛡️'); }
 
