@@ -158,10 +158,13 @@ client.on('messageCreate', async (message) => {
       const textAliases = ['antinsfwmessages', 'nonsfwtext'];
       const filterAliases = ['antibypassfilter', 'filter'];
 
+      // --- CUSTOM FORMAT FOR ANTINSFW ---
       if (nsfwAliases.includes(cmd)) {
         const state = args[0]?.toLowerCase();
-        const arrow = await embeds.getEmoji(client, 'arrow_right2', '>');
         
+        const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
+        
+        // If no state provided, show info
         if (state !== 'on' && state !== 'off') {
             const desc = `
 ${arrow} **Mode:** \`${s.nsfwMode.toUpperCase()}\`
@@ -174,20 +177,31 @@ ${arrow} \`$AntiNsfw on --punishment:mute --duration:1h\`
             return message.reply({ embeds: [embed] });
         }
         
+        // Check if already on/off
         if (state === 'on' && s.antiNsfw) return sendMessage(message, 'error', 'Already Enabled', ['NSFW filtering is already **ON**.'], message.guild, client, s);
         if (state === 'off' && !s.antiNsfw) return sendMessage(message, 'error', 'Already Disabled', ['NSFW filtering is already **OFF**.'], message.guild, client, s);
 
         s.antiNsfw = (state === 'on');
+        
         const punishFlag = args.find(a => a.startsWith('--punishment'));
         if (punishFlag) s.nsfwPunish = punishFlag.split(':')[1]?.toLowerCase() || args[args.indexOf(punishFlag)+1]?.toLowerCase();
+        
         const durFlag = args.find(a => a.startsWith('--duration'));
         if (durFlag) s.nsfwDur = durFlag.split(':')[1]?.toLowerCase() || args[args.indexOf(durFlag)+1]?.toLowerCase();
+        
         const modeFlag = args.find(a => a.startsWith('--mode'));
         if (modeFlag) {
             const modeVal = modeFlag.split(':')[1]?.toLowerCase() || args[args.indexOf(modeFlag)+1]?.toLowerCase();
             if (['basic', 'moderate', 'advanced'].includes(modeVal)) s.nsfwMode = modeVal;
         }
+
         await s.save();
+
+        // NEW LOGIC: If it's off, send simple message. If it's on, show details.
+        if (state === 'off') {
+            const embed = await embeds.success('', `Turned **OFF** NSFW AI filtering`, message.guild, client, 'General');
+            return message.reply({ embeds: [embed] });
+        }
 
         const successDesc = `
 ${arrow} **Mode:** \`${s.nsfwMode.toUpperCase()}\`
@@ -197,9 +211,11 @@ ${arrow} **Punishment:** \`${s.nsfwPunish}\`
         return message.reply({ embeds: [embed] });
       }
 
+      // --- CUSTOM FORMAT FOR NOSFWTEXT ---
       if (textAliases.includes(cmd)) {
         const state = args[0]?.toLowerCase();
-        const arrow = await embeds.getEmoji(client, 'arrow_right2', '>');
+        
+        const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
 
         if (state !== 'on' && state !== 'off') {
             const desc = `
@@ -224,6 +240,12 @@ ${arrow} \`$NoNsfwText on 0.9 --punishment:mute\`
         const durFlag = args.find(a => a.startsWith('--duration'));
         if (durFlag) s.msgDur = durFlag.split(':')[1]?.toLowerCase() || args[args.indexOf(durFlag)+1]?.toLowerCase();
         await s.save();
+
+        // NEW LOGIC: If it's off, send simple message.
+        if (state === 'off') {
+            const embed = await embeds.success('', `Turned **OFF** Text Filtering`, message.guild, client, 'General');
+            return message.reply({ embeds: [embed] });
+        }
 
         const successDesc = `
 ${arrow} **Sensitivity:** \`${s.sensitivity}\`
@@ -261,6 +283,7 @@ ${arrow} **Punishment:** \`${s.msgPunish}\`
       return; 
   }
 
+  // TEXT FILTER (Checks forwards)
   if (s.termMessages) {
     let textToScan = message.content;
     if (message.messageSnapshots.size > 0) textToScan += " " + message.messageSnapshots.first().content;
@@ -281,6 +304,7 @@ ${arrow} **Punishment:** \`${s.msgPunish}\`
     }
   }
 
+  // AI SCANNER (Checks forwards)
   if (s.antiNsfw) {
      const threshold = getNsfwThreshold(s.nsfwMode);
      let isUnsafe = false;
