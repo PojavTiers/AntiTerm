@@ -2,45 +2,45 @@ const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, TextDisp
 const embeds = require('./embeds.js');
 
 function getHelpContainer(page, client, guild, totalPages) {
-    // Fetch the custom "info" emoji using the exact raw format for TextDisplay
-    const emojiObj = guild.emojis.cache.find(e => e.name.toLowerCase().startsWith('info'));
-    const infoDisplay = emojiObj ? `<:${emojiObj.name}:${emojiObj.id}>` : 'ℹ️';
-
+    // Fetch the exact custom emojis by name
+    const infoDisplay = embeds.getEmoji(guild, 'info', '[info]');
+    const shieldDisplay = embeds.getEmoji(guild, 'shield', '[shield]');
+    const settingsDisplay = embeds.getEmoji(guild, 'settings', '[settings]');
+    
     const p1 = `
-### ${infoDisplay} Help
+### ${infoDisplay} AntiTerm Help
 
-**Help Commands**
-├ help
-└ help category
+**${shieldDisplay} Setup & Moderation**
+**\`AntiNsfw\`** - Scan images/videos.
+**\`NoNsfwText\`** - Scan bad words.
 
-**Moderation Commands**
-├ antinsfw
-├ antinsfwmessages
-└ antibypassfilter
+**${settingsDisplay} Configuration**
+**\`Config\`** - Toggle embeds and warnings.
+**\`Filter\`** - Add custom banned words.
 
-**Antinuke Commands**
-├ antinuke
-└ antinuke admin
+**Usage:** Type the command name or use \`/help\` to see examples.
 `;
     const p2 = `
-### ${infoDisplay} Help
+### ${infoDisplay} Examples
 
-**Command Examples**
-├ $antinsfw on --punishment:ban
-├ $antinsfwmessages on 0.8 --punishment:mute --duration:1h
-├ $antibypassfilter add badword
-└ $config nsfwwarning {user} posted NSFW!
+**To enable the AI image scanner:**
+\`$AntiNsfw on --mode:advanced --punishment:mute\`
 
-**Need Help?**
-├ All commands require Admin permissions.
-└ Use the buttons below to navigate.
+**To enable the text filter:**
+\`$NoNsfwText on 0.8 --punishment:delete\`
+
+**To add a custom word to the filter:**
+\`$Filter add badword\`
+
+**To change a custom warning:**
+\`$Config wordwarning Watch your mouth {user}!\`
 `;
 
     const currentDesc = page === 1 ? p1 : p2;
 
-    const leftEmoji = embeds.getButtonEmoji(guild, 'arrow_left', '◀️');
-    const rightEmoji = embeds.getButtonEmoji(guild, 'arrow_right', '▶️');
-    const trashEmoji = embeds.getButtonEmoji(guild, 'dustbin', '🗑️'); 
+    const leftEmoji = embeds.getButtonEmoji(guild, 'arrow_left', '◀');
+    const rightEmoji = embeds.getButtonEmoji(guild, 'arrow_right', '▶');
+    const trashEmoji = embeds.getButtonEmoji(guild, 'dustbin', '✖'); 
 
     const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('prev_page').setEmoji(leftEmoji).setStyle(ButtonStyle.Secondary).setDisabled(page === 1),
