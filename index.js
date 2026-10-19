@@ -10,7 +10,7 @@ const os = require('os');
 const embeds = require('./embeds.js');
 const setActivity = require('./activity.js');
 const { connectDB, getSettings } = require('./database.js');
-const { sendMessage, isAuthorized, checkViolation, applyPunishment, getNsfwThreshold, EXTREME_SLURS, MEDIUM_INSULTS, SAFE_WORDS } = require('./utils.js');
+const { sendMessage, isAuthorized, checkViolation, applyPunishment, getNsfwThreshold, createVideoCollage, EXTREME_SLURS, MEDIUM_INSULTS, SAFE_WORDS } = require('./utils.js');
 const { getHelpContainer } = require('./help.js');
 const { handleConfig } = require('./config.js');
 
@@ -150,7 +150,6 @@ client.on('messageCreate', async (message) => {
       if (nsfwAliases.includes(cmd)) {
         const state = args[0]?.toLowerCase();
         
-        // If no state provided, show info + instructions
         if (state !== 'on' && state !== 'off') {
             const title = `Filtering **NSFW Content** ${s.antiNsfw ? 'On' : 'Off'}`;
             const fields = [
@@ -190,7 +189,6 @@ client.on('messageCreate', async (message) => {
       }
 
       if (textAliases.includes(cmd)) {
-        // (Text filter prefix logic remains the same...)
         const state = args[0]?.toLowerCase();
         if (state !== 'on' && state !== 'off') {
             const title = `Filtering **Messages** ${s.termMessages ? 'On' : 'Off'}`;
@@ -268,7 +266,6 @@ client.on('messageCreate', async (message) => {
 
   // AI SCANNER
   if (s.antiNsfw) {
-     // Dynamically get the threshold based on the chosen mode
      const threshold = getNsfwThreshold(s.nsfwMode);
 
      let mediaUrl = null;
@@ -298,22 +295,17 @@ client.on('messageCreate', async (message) => {
          let isUnsafe = false;
 
          if (isVideo) {
-           const tempVideoPath = path.join(os.tmpdir(), `vid_${Date.now()}.mp4`);
-           const framePrefix = `frame_${Date.now()}`;
-           fs.writeFileSync(tempVideoPath, buffer);
-           try {
-             await new Promise((resolve, reject) => { ffmpeg(tempVideoPath).on('end', resolve).on('error', reject).screenshots({ count: 3, folder: os.tmpdir(), filename: `${framePrefix}_%i.jpg`, size: '640x?' }); });
-             const files = fs.readdirSync(os.tmpdir()).filter(f => f.startsWith(framePrefix));
-             for (const file of files) {
-               const framePath = path.join(os.tmpdir(), file);
-               const frameBuffer = fs.readFileSync(framePath);
-               const formData = new FormData(); formData.append('image', new Blob([frameBuffer], { type: 'image/jpeg' }), 'frame.jpg');
+           // NEW FAST COLLAGE METHOD
+           const collageBuffer = await createVideoCollage(buffer);
+           if (collageBuffer) {
+               const formData = new FormData(); 
+               formData.append('image', new Blob([collageBuffer], { type: 'image/jpeg' }), 'collage.jpg');
                const apiRes = await fetch(process.env.NSFW_API_URL + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
-               const data = JSON.parse(await apiRes.text()); fs.unlinkSync(framePath);
-               if (data.safe === false || (data.scores && (data.scores.nsfw > threshold || data.scores.sexy > threshold || data.scores.hentai > threshold || data.scores.porn > threshold))) { isUnsafe = true; break; }
-             }
-             fs.unlinkSync(tempVideoPath);
-           } catch (err) { if (fs.existsSync(tempVideoPath)) fs.unlinkSync(tempVideoPath); }
+               const data = JSON.parse(await apiRes.text());
+               if (data.safe === false || (data.scores && (data.scores.nsfw > threshold || data.scores.sexy > threshold || data.scores.hentai > threshold || data.scores.porn > threshold))) {
+                   isUnsafe = true;
+               }
+           }
          } else if (isGif) { 
            try {
                const frameData = await gifFrames({ url: buffer, frames: 'all', outputType: 'jpeg', cumulative: true });
