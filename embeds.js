@@ -16,11 +16,12 @@ function createEmbed(type, title, description, guild, client, category = 'Genera
     let color = '#5865F2'; // Default Blue
     let icon = 'ℹ️';
 
-    // UPDATED COLORS HERE
-    if (type === 'success') { color = '#00FF00'; icon = getEmoji(guild, 'success', '✅'); } // Lime Green
-    if (type === 'error') { color = '#FF0000'; icon = getEmoji(guild, 'error', '❌'); } // Bright Red
-    if (type === 'warning') { color = '#FEE75C'; icon = getEmoji(guild, 'warning', '⚠️'); }
-    if (type === 'shield') { color = '#2B2D31'; icon = getEmoji(guild, 'shield', '🛡️'); }
+    // PROFESSIONAL COLOR PALETTE
+    if (type === 'success') { color = '#57F287'; icon = getEmoji(guild, 'success', '✅'); } // Clean Green
+    if (type === 'error') { color = '#ED4245'; icon = getEmoji(guild, 'error', '❌'); } // Clean Red
+    if (type === 'warning') { color = '#FEE75C'; icon = getEmoji(guild, 'warning', '⚠️'); } // Clean Yellow
+    if (type === 'info') { color = '#3498DB'; icon = getEmoji(guild, 'info', 'ℹ️'); } // Flat UI Blue
+    if (type === 'shield') { color = '#2B2D31'; icon = getEmoji(guild, 'shield', '🛡️'); } // Stealth Dark Gray
 
     let footerText = `AntiTerm Security | ${category}`;
     if (page && totalPages) {
