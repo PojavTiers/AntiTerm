@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const settingsSchema = new mongoose.Schema({
     guildId: { type: String, required: true, unique: true },
     antiNsfw: { type: Boolean, default: false },
+    nsfwMode: { type: String, default: 'moderate' }, // NEW: basic, moderate, advanced
     nsfwPunish: { type: String, default: 'delete' },
     nsfwDur: { type: String, default: '1h' },
     termMessages: { type: Boolean, default: false },
