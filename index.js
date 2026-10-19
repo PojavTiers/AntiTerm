@@ -27,10 +27,9 @@ client.on('messageCreate', async (message) => {
   }
   const serverSettings = settings.get(message.guild.id);
 
-  // --- COMMANDS ---
   if (message.content === '$antinsfw on') {
     serverSettings.antiNsfw = true;
-    return message.reply('✅ AntiNSFW is now **ON**. I will scan images and GIFs.');
+    return message.reply('✅ AntiNSFW is now **ON**.');
   }
   if (message.content === '$antinsfw off') {
     serverSettings.antiNsfw = false;
@@ -55,7 +54,6 @@ client.on('messageCreate', async (message) => {
     return message.reply(`✅ Removed \`${word}\``);
   }
 
-  // --- TEXT FILTER ---
   if (serverSettings.words.length > 0) {
     const cleanedMessage = normalise(message.content);
     if (cleanedMessage.length >= 3) {
@@ -73,40 +71,41 @@ client.on('messageCreate', async (message) => {
   }
 
   // --- IMAGE NSFW FILTER ---
-  if (message.attachments.size > 0) {
-    console.log(`[TEST] Image detected! AntiNSFW status: ${serverSettings.antiNsfw}`);
-    
-    if (serverSettings.antiNsfw) {
-      const attachment = message.attachments.first();
-      console.log(`[TEST] Image URL: ${attachment.url}`);
-      
-      try {
-        console.log(`[TEST] Sending request to: ${process.env.NSFW_API_URL}/classify`);
-        
-        const response = await fetch(process.env.NSFW_API_URL + '/classify', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': process.env.NSFW_API_KEY
-          },
-          body: JSON.stringify({ url: attachment.url })
-        });
+  if (message.attachments.size > 0 && serverSettings.antiNsfw) {
+    const attachment = message.attachments.first();
+    console.log(`[TEST] Image detected, sending as file...`);
 
-        console.log(`[TEST] API Responded with status: ${response.status}`);
+    try {
+      // Download image from Discord
+      const imageResponse = await fetch(attachment.url);
+      const imageBuffer = await imageResponse.arrayBuffer();
+      const blob = new Blob([imageBuffer], { type: attachment.contentType || 'image/jpeg' });
 
-        const rawText = await response.text();
-        console.log(`[TEST] API Raw Response: ${rawText}`);
-        
-        if (rawText.toLowerCase().includes('nsfw') || rawText.toLowerCase().includes('weapon')) {
-            console.log(`[TEST] Deleting image because it matched NSFW/Weapon keywords.`);
-            await message.delete().catch((err) => console.log(`[TEST] Failed to delete: ${err}`));
-            const warning = await message.channel.send(`⚠️ ${message.author}, this image is not allowed here.`);
-            setTimeout(() => warning.delete().catch(() => {}), 5000);
-        }
+      // Send as multipart/form-data with 'image' field (as per template docs)
+      const formData = new FormData();
+      formData.append('image', blob, 'image.jpg');
 
-      } catch (err) {
-        console.error('[TEST] Failed to scan image:', err);
+      const response = await fetch(process.env.NSFW_API_URL + '/classify', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.API_KEY}`
+        },
+        body: formData
+      });
+
+      console.log(`[TEST] API status: ${response.status}`);
+      const rawText = await response.text();
+      console.log(`[TEST] API response: ${rawText}`);
+
+      // The API returns { "safe": false, "flags": ["nsfw"] } or similar
+      const data = JSON.parse(rawText);
+      if (data.safe === false || (data.flags && data.flags.length > 0)) {
+        await message.delete().catch(() => {});
+        const warning = await message.channel.send(`⚠️ ${message.author}, this image is not allowed here.`);
+        setTimeout(() => warning.delete().catch(() => {}), 5000);
       }
+    } catch (err) {
+      console.error('[TEST] Failed:', err);
     }
   }
 });
