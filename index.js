@@ -11,7 +11,6 @@ const client = new Client({
 
 const settings = new Map();
 
-// Helper for text filtering
 function normalise(text) {
   return text.toLowerCase().replace(/0/g, 'o').replace(/1/g, 'i').replace(/3/g, 'e').replace(/4/g, 'a').replace(/5/g, 's').replace(/7/g, 't').replace(/@/g, 'a').replace(/\$/g, 's').replace(/[^a-z]/g, '');
 }
@@ -31,7 +30,7 @@ client.on('messageCreate', async (message) => {
   // --- COMMANDS ---
   if (message.content === '$antinsfw on') {
     serverSettings.antiNsfw = true;
-    return message.reply('✅ AntiNSFW is now **ON**. I will scan images.');
+    return message.reply('✅ AntiNSFW is now **ON**. I will scan images and GIFs.');
   }
   if (message.content === '$antinsfw off') {
     serverSettings.antiNsfw = false;
@@ -68,7 +67,7 @@ client.on('messageCreate', async (message) => {
         await message.delete().catch(() => {});
         const warning = await message.channel.send(`⚠️ ${message.author}, that word is not allowed.`);
         setTimeout(() => warning.delete().catch(() => {}), 5000);
-        return; // Stop here if text was deleted
+        return;
       }
     }
   }
@@ -76,31 +75,42 @@ client.on('messageCreate', async (message) => {
   // --- IMAGE NSFW FILTER ---
   if (serverSettings.antiNsfw && message.attachments.size > 0) {
     const attachment = message.attachments.first();
+    const isImage = attachment.contentType && (attachment.contentType.startsWith('image/') || attachment.contentType.includes('gif'));
     
-    // Check if it's an image
-    if (attachment.contentType && attachment.contentType.startsWith('image/')) {
+    if (isImage) {
       try {
-        // Call the Railway NSFW API
+        // 1. Download the image from Discord
+        const imageResponse = await fetch(attachment.url);
+        const imageBuffer = await imageResponse.arrayBuffer();
+        
+        // 2. Create form data to send to the API
+        const formData = new FormData();
+        const blob = new Blob([imageBuffer], { type: attachment.contentType });
+        formData.append('image', blob, 'image.jpg'); // Some APIs want 'file' instead of 'image'
+
+        // 3. Send to Railway API
         const response = await fetch(process.env.NSFW_API_URL + '/classify', {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
             'x-api-key': process.env.NSFW_API_KEY
           },
-          body: JSON.stringify({ url: attachment.url })
+          body: formData
         });
 
         if (!response.ok) {
-            console.error('API Error:', await response.text());
+            console.error('API Error Status:', response.status);
+            console.error('API Error Body:', await response.text());
             return;
         }
 
         const data = await response.json();
+        console.log('--- IMAGE SCAN RESULT ---');
+        console.log(JSON.stringify(data, null, 2));
         
-        // If the API detects NSFW with high confidence, delete it
-        if (data.is_nsfw === true || (data.nsfw_score && data.nsfw_score > 0.6)) {
+        // 4. Delete if NSFW
+        if (data.is_nsfw === true || (data.nsfw_score && data.nsfw_score > 0.5) || (data.is_weapon === true)) {
            await message.delete().catch(() => {});
-           const warning = await message.channel.send(`⚠️ ${message.author}, NSFW images are not allowed here.`);
+           const warning = await message.channel.send(`⚠️ ${message.author}, this image is not allowed here.`);
            setTimeout(() => warning.delete().catch(() => {}), 5000);
            return;
         }
