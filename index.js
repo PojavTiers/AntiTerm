@@ -79,49 +79,56 @@ client.on('messageCreate', async (message) => {
   if (serverSettings.antiNsfw) {
     let mediaUrl = null;
 
+    // 1. Check for direct attachments
     if (message.attachments.size > 0) {
       mediaUrl = message.attachments.first().url;
-    } else if (message.content.match(/https?:\/\/[^\s]+/)) {
+    } 
+    // 2. Check if Discord made an Embed (Tenor, Giphy, Klipy links usually make embeds)
+    else if (message.embeds.length > 0) {
+      const embed = message.embeds[0];
+      // Try to grab the video or image from the embed
+      if (embed.video && embed.video.url) mediaUrl = embed.video.url;
+      else if (embed.image && embed.image.url) mediaUrl = embed.image.url;
+      else if (embed.thumbnail && embed.thumbnail.url) mediaUrl = embed.thumbnail.url;
+    }
+    // 3. Check raw text links
+    else if (message.content.match(/https?:\/\/[^\s]+/)) {
       mediaUrl = message.content.match(/https?:\/\/[^\s]+/)[0];
     }
 
     if (mediaUrl) {
-      console.log(`[DEBUG] Original link found: ${mediaUrl}`);
+      console.log(`[DEBUG] Found media URL to scan: ${mediaUrl}`);
       
       try {
         let finalUrl = mediaUrl;
-        let isGif = finalUrl.toLowerCase().includes('.gif') || finalUrl.includes('tenor.com') || finalUrl.includes('giphy.com');
-
-        // --- SCRAPER LOGIC: If it's a website (like klipy.com), find the hidden .gif or .mp4 inside ---
+        
+        // If the URL is still a webpage (not an image), try one last-ditch scrape
         if (!finalUrl.match(/\.(jpeg|jpg|png|gif|mp4|webp)/i) && !finalUrl.includes('cdn.discordapp.com')) {
-            console.log(`[DEBUG] Link is a website. Scraping for direct media...`);
+            console.log(`[DEBUG] URL is a webpage. Trying to extract media...`);
             const webRes = await fetch(finalUrl);
             const html = await webRes.text();
             
-            // Look for a GIF or MP4 link inside the HTML
-            const gifMatch = html.match(/(https:\/\/[^"']+\.gif)/i);
-            const mp4Match = html.match(/(https:\/\/[^"']+\.mp4)/i);
-            
-            if (gifMatch) {
-                finalUrl = gifMatch[0];
-                isGif = true;
-            } else if (mp4Match) {
-                finalUrl = mp4Match[0];
-                isGif = false; // Treat as video
+            // Look for .mp4 or .gif links in the HTML
+            const mediaMatch = html.match(/(https:\/\/[^"']+\.(?:gif|mp4))/i);
+            if (mediaMatch) {
+                finalUrl = mediaMatch[0];
+                console.log(`[DEBUG] Found hidden media link: ${finalUrl}`);
             } else {
-                // Try looking for og:image meta tag (common for klipy/tenor)
-                const ogMatch = html.match(/<meta property="og:image" content="([^"]+)"/i);
-                if (ogMatch) finalUrl = ogMatch[1];
+                console.log(`[DEBUG] Could not find any media in the webpage. Skipping scan.`);
+                return;
             }
-            console.log(`[DEBUG] Scraped URL: ${finalUrl} | isGif: ${isGif}`);
         }
 
-        // --- SCAN LOGIC ---
+        const isGif = finalUrl.toLowerCase().includes('.gif');
+        const isVideo = finalUrl.toLowerCase().includes('.mp4') || finalUrl.toLowerCase().includes('.webm');
+
+        // --- DOWNLOAD MEDIA ---
         const imageResponse = await fetch(finalUrl);
         const contentType = imageResponse.headers.get('content-type');
         const imageBuffer = await imageResponse.arrayBuffer();
         
-        if (isGif && imageBuffer.byteLength < 5000000) { // Only try to extract frames if GIF is under 5MB
+        // --- IF IT'S A GIF, EXTRACT FRAMES ---
+        if (isGif && !isVideo && imageBuffer.byteLength < 5000000) { 
           console.log(`[DEBUG] Extracting GIF frames...`);
           const buffer = Buffer.from(imageBuffer);
           try {
@@ -149,10 +156,10 @@ client.on('messageCreate', async (message) => {
                       body: formData
                     });
                     const rawText = await apiRes.text();
-                    console.log(`[DEBUG] Frame ${i} RESPONSE:`, rawText);
                     const data = JSON.parse(rawText);
+                    console.log(`[DEBUG] Frame ${i} Scores:`, data.scores);
                     
-                    if (data.safe === false || (data.scores && (data.scores.nsfw > 0.4 || data.scores.sexy > 0.4 || data.scores.hentai > 0.4))) {
+                    if (data.safe === false || (data.scores && (data.scores.nsfw > 0.4 || data.scores.sexy > 0.4 || data.scores.hentai > 0.4 || data.scores.porn > 0.4))) {
                       await message.delete().catch(() => {});
                       const warning = await message.channel.send(`⚠️ ${message.author}, NSFW GIFs are not allowed here.`);
                       setTimeout(() => warning.delete().catch(() => {}), 5000);
@@ -160,14 +167,14 @@ client.on('messageCreate', async (message) => {
                     }
                   }
                   console.log('[DEBUG] All GIF frames safe.');
-                  return; // Done scanning
+                  return; 
               }
           } catch (e) {
-              console.log('[DEBUG] GIF frame extraction failed, scanning as static image.');
+              console.log('[DEBUG] GIF extraction failed, scanning as static image.');
           }
         }
         
-        // --- FALLBACK: Scan as static image (or MP4 first frame) ---
+        // --- STATIC IMAGE / VIDEO FALLBACK ---
         const blob = new Blob([imageBuffer], { type: contentType || 'image/jpeg' });
         const formData = new FormData();
         formData.append('image', blob, 'image.jpg');
@@ -190,7 +197,7 @@ client.on('messageCreate', async (message) => {
         );
 
         if (data.safe === false || (data.flags && data.flags.length > 0) || isUnsafeScore) {
-          console.log(`[DEBUG] Deleting image. Scores:`, data.scores);
+          console.log(`[DEBUG] Deleting media. Scores:`, data.scores);
           await message.delete().catch(() => {});
           const warning = await message.channel.send(`⚠️ ${message.author}, NSFW media is not allowed here.`);
           setTimeout(() => warning.delete().catch(() => {}), 5000);
