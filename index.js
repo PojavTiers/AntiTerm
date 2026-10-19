@@ -422,9 +422,8 @@ ${arrow} **Punishment:** \`${s.msgPunish}\`
          await applyPunishment(message.member, s.nsfwPunish, s.nsfwDur, 'Posted NSFW media.', message, client);
          
          const censoredFlag = censorWord(detectedFlag);
-         const warnEmoji = await embeds.getEmoji(client, 'warning', '⚠️');
-
-         const warningText = `${warnEmoji} <@${message.author.id}> That image is not allowed on this server, flagged \`${censoredFlag}\``;
+         
+         const warningText = `<@${message.author.id}> That image is not allowed on this server, flagged \`${censoredFlag}\``;
          
          // DIRECTLY CREATING AND SENDING THE EMBED HERE
          const embed = await embeds.warning('', warningText, message.guild, client, 'General');
