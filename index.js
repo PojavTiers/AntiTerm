@@ -1,4 +1,8 @@
-const { Client, GatewayIntentBits, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require('discord.js');
+const { 
+    Client, GatewayIntentBits, PermissionFlagsBits, ActionRowBuilder, 
+    ButtonBuilder, ButtonStyle, ComponentType, 
+    ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, MessageFlags 
+} = require('discord.js');
 const gifFrames = require('gif-frames');
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegPath = require('ffmpeg-static');
@@ -57,18 +61,17 @@ async function getSettings(guildId) {
     return s;
 }
 
-// --- NEW GLOBAL MESSAGE FORMATTER ---
+// --- GLOBAL MESSAGE FORMATTER ---
 function sendMessage(target, type, title, fields, guild, client, s) {
-    // fields is an array of strings. We format them with the "└" tree style
     let formattedDesc = "";
     if (Array.isArray(fields)) {
         formattedDesc = fields.map(f => `└ ${f}`).join('\n');
     } else {
-        // If a string was passed instead of an array
         formattedDesc = fields.split('\n').map(line => line.startsWith('└') ? line : `└ ${line}`).join('\n');
     }
 
     if (s.useEmbeds) {
+        // Using standard embeds for normal commands, but you can swap to Container if you want
         return target.reply({ embeds: [embeds[type](title, formattedDesc, guild, client)] });
     } else {
         const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : type === 'warning' ? '⚠️' : 'ℹ️';
@@ -163,53 +166,64 @@ async function applyPunishment(member, type, durationStr, reason, message, clien
     }
 }
 
-// --- HELP MENU BUILDER ---
-function getHelpMenu(page, client, guild, totalPages) {
+// --- THE EXACT CONTAINER HELP MENU ---
+function getHelpContainer(page, client, guild, totalPages) {
     const p1 = `
+### ℹ️ Help
+
 **Help Commands**
-└ \`help\`
-└ \`help category\`
+├ help
+└ help category
 
 **Moderation Commands**
-└ \`AntiNsfw\` *(alias: AntiNsfwContent)*
-└ \`NoNsfwText\` *(alias: AntiNsfwMessages)*
-└ \`Filter\` *(alias: AntiBypassFilter)*
+├ antinsfw
+├ antinsfwmessages
+└ antibypassfilter
 
-**Settings**
-└ \`Config embeds on/off\`
-└ \`Config nsfwwarning <text>\`
-└ \`Config wordwarning <text>\`
-└ \`AntiTermAdmin add/remove/list\`
+**Antinuke Commands**
+├ antinuke
+└ antinuke admin
 `;
+
     const p2 = `
+### ℹ️ Help
+
 **Command Examples**
-└ \`$AntiNsfw on --punishment:ban\`
-└ \`$NoNsfwText on 0.8 --punishment:mute --duration:1h\`
-└ \`$Filter add badword\`
-└ \`$Config nsfwwarning {user} posted NSFW!\`
+├ $antinsfw on --punishment:ban
+├ $antinsfwmessages on 0.8 --punishment:mute --duration:1h
+├ $antibypassfilter add badword
+└ $config nsfwwarning {user} posted NSFW!
 
 **Need Help?**
-└ All commands require Admin permissions.
+├ All commands require Admin permissions.
 └ Use the buttons below to navigate.
 `;
 
     const descriptions = [p1, p2];
-    const titles = ['Help', 'Examples & Usage'];
-    const categories = ['General', 'Configuration'];
-    
-    return embeds.shield(titles[page-1], descriptions[page-1], guild, client, categories[page-1], page, totalPages);
-}
+    const currentDesc = descriptions[page-1];
 
-function getHelpButtons(page, totalPages, guild, client) {
     const leftEmoji = embeds.getButtonEmoji(guild, 'arrow_left', '◀️');
     const rightEmoji = embeds.getButtonEmoji(guild, 'arrow_right', '▶️');
     const trashEmoji = embeds.getButtonEmoji(guild, 'dustbin', '🗑️'); 
 
-    return new ActionRowBuilder().addComponents(
+    const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('prev_page').setEmoji(leftEmoji).setStyle(ButtonStyle.Secondary).setDisabled(page === 1),
         new ButtonBuilder().setCustomId('next_page').setEmoji(rightEmoji).setStyle(ButtonStyle.Secondary).setDisabled(page === totalPages),
         new ButtonBuilder().setCustomId('delete_msg').setEmoji(trashEmoji).setStyle(ButtonStyle.Danger)
     );
+
+    // Using the new Components V2 Container
+    const container = new ContainerBuilder()
+        .setAccentColor(0x2B2D31) // Dark gray border
+        .addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(currentDesc)
+        )
+        .addSeparatorComponents(
+            new SeparatorBuilder().setDivider(true).setSpacing(1)
+        )
+        .addActionRowComponents(row);
+
+    return container;
 }
 
 client.once('clientReady', async () => {
@@ -290,7 +304,12 @@ client.on('emojiCreate', async (emoji) => {
 });
 
 client.on('interactionCreate', async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
+  if (!interaction.isChatInputCommand() && !interaction.isButton()) return;
+
+  if (interaction.isButton()) {
+      if (interaction.customId === 'delete_msg') return interaction.message.delete().catch(()=>{});
+      return;
+  }
 
   if (!interaction.guild) {
       return interaction.reply({ content: 'This bot can only be used inside a server.', ephemeral: true });
@@ -420,9 +439,10 @@ client.on('messageCreate', async (message) => {
         let currentPage = 1;
         const totalPages = 2;
         
+        // Sending the Container Component
         const msg = await message.reply({ 
-            embeds: [getHelpMenu(currentPage, client, message.guild, totalPages)], 
-            components: [getHelpButtons(currentPage, totalPages, message.guild, client)] 
+            components: [getHelpContainer(currentPage, client, message.guild, totalPages)],
+            flags: MessageFlags.IsComponentsV2 
         });
 
         const collector = msg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 60000 });
@@ -438,8 +458,8 @@ client.on('messageCreate', async (message) => {
             if (i.customId === 'next_page' && currentPage < totalPages) currentPage++;
 
             await i.update({ 
-                embeds: [getHelpMenu(currentPage, client, message.guild, totalPages)], 
-                components: [getHelpButtons(currentPage, totalPages, message.guild, client)] 
+                components: [getHelpContainer(currentPage, client, message.guild, totalPages)],
+                flags: MessageFlags.IsComponentsV2
             });
         });
 
@@ -605,7 +625,7 @@ client.on('messageCreate', async (message) => {
                      const formData = new FormData(); formData.append('image', new Blob([frameBuffer], { type: 'image/jpeg' }), `frame_${i}.jpg`);
                      const apiRes = await fetch(process.env.NSFW_API_URL + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
                      const data = JSON.parse(await apiRes.text());
-                     if (data.safe === false || (data.scores && (data.scores.nsfw > 0.4 || data.scores.sexy > 0.4 || data.scores.hentai > 0.4 || data.scores.porn > 0.4))) { isUnsafe = true; break; }
+                     if (data.safe === false || (data.scores && (data.scores.nsfw > 0.4 || data.scores.sexy > 0.4))) { isUnsafe = true; break; }
                    }
                }
            } catch (e) {}
