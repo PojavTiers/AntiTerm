@@ -10,6 +10,7 @@ const path = require('path');
 const os = require('os');
 
 const embeds = require('./embeds.js');
+const setActivity = require('./activity.js'); // NEW: Importing activity file
 
 ffmpeg.setFfmpegPath(ffmpegPath);
 ffmpeg.setFfprobePath(ffprobePath);
@@ -24,7 +25,7 @@ const client = new Client({
 });
 
 // ==========================================
-// 🗄️ DATABASE SETUP (UPDATED WITH CONFIG)
+// 🗄️ DATABASE SETUP
 // ==========================================
 const settingsSchema = new mongoose.Schema({
     guildId: { type: String, required: true, unique: true },
@@ -38,7 +39,6 @@ const settingsSchema = new mongoose.Schema({
     words: { type: [String], default: [] },
     allowedUsers: { type: [String], default: [] },
     
-    // NEW CONFIGURATION FIELDS
     useEmbeds: { type: Boolean, default: true },
     customMessages: {
         nsfwWarning: { type: String, default: "Image detected as **NSFW** and deleted the message." },
@@ -57,7 +57,6 @@ async function getSettings(guildId) {
     return s;
 }
 
-// Helper to send Embeds or Plain Text
 function sendMessage(target, type, title, desc, guild, client, s) {
     if (s.useEmbeds) {
         return target.reply({ embeds: [embeds[type](title, desc, guild, client)] });
@@ -81,7 +80,6 @@ async function fetchWebProfanity() {
         const response = await fetch('https://raw.githubusercontent.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words/master/en');
         const text = await response.text();
         WEB_PROFANITY_LIST = text.split('\n').map(w => w.trim().toLowerCase()).filter(w => w.length > 2 && !SAFE_WORDS.includes(w));
-        console.log(`[DEBUG] Downloaded ${WEB_PROFANITY_LIST.length} bad words.`);
     } catch (e) { console.error('[DEBUG] Failed to fetch profanity list:', e); }
 }
 
@@ -155,7 +153,6 @@ async function applyPunishment(member, type, durationStr, reason, message, clien
     }
 }
 
-// --- HELP MENU BUILDER ---
 function getHelpMenu(page, client, guild, totalPages) {
     const p1 = `
 **Moderation Configuration**
@@ -207,6 +204,9 @@ function getHelpButtons(page, totalPages, guild, client) {
 client.once('clientReady', async () => {
   console.log(`✅ ${client.user.tag} is online!`);
   
+  // NEW: Call the activity function
+  setActivity(client);
+
   try {
       for (const guild of client.guilds.cache.values()) {
           await guild.emojis.fetch();
@@ -280,7 +280,6 @@ client.on('emojiCreate', async (emoji) => {
     await emoji.guild.emojis.fetch();
 });
 
-// --- SLASH COMMANDS ---
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
@@ -387,7 +386,6 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-// --- PREFIX COMMANDS ---
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild) return;
 
@@ -455,10 +453,8 @@ client.on('messageCreate', async (message) => {
         return sendMessage(message, 'success', 'Config Updated', `Setting **${setting}** has been updated.`, message.guild, client, s);
       }
 
-      // ALIASES LOGIC
       const nsfwAliases = ['antinsfwcontent', 'antinsfw', 'antinsfwbypass'];
       const textAliases = ['antinsfwmessages', 'nonsfwtext'];
-      const filterAliases = ['antibypassfilter', 'filter'];
 
       if (nsfwAliases.includes(cmd)) {
         const state = args[0]?.toLowerCase();
@@ -503,7 +499,6 @@ client.on('messageCreate', async (message) => {
       return; 
   }
 
-  // --- TEXT FILTER EXECUTION ---
   if (s.termMessages) {
     let violation = false;
     if (s.words.some(w => checkViolation(message.content, w))) violation = true;
@@ -515,7 +510,6 @@ client.on('messageCreate', async (message) => {
         await message.delete().catch(() => {});
         await applyPunishment(message.member, s.msgPunish, s.msgDur, 'Used a banned word.', message, client);
         
-        // USE CUSTOM MESSAGE HERE
         const customWarning = s.customMessages.wordWarning.replace('{user}', `<@${message.author.id}>`);
         const warning = await sendMessage(message.channel, 'warning', 'Word Blocked', `${customWarning}\nAction: **${s.msgPunish.toUpperCase()}**`, message.guild, client, s);
         setTimeout(() => warning.delete().catch(() => {}), 5000);
@@ -523,7 +517,6 @@ client.on('messageCreate', async (message) => {
     }
   }
 
-  // --- AI SCANNER EXECUTION ---
   if (s.antiNsfw) {
      let mediaUrl = null;
      if (message.attachments.size > 0) mediaUrl = message.attachments.first().url;
@@ -594,7 +587,6 @@ client.on('messageCreate', async (message) => {
            await message.delete().catch(() => {});
            await applyPunishment(message.member, s.nsfwPunish, s.nsfwDur, 'Posted NSFW media.', message, client);
            
-           // USE CUSTOM MESSAGE HERE
            const customWarning = s.customMessages.nsfwWarning.replace('{user}', `<@${message.author.id}>`);
            const warningMsg = await sendMessage(message.channel, 'warning', 'NSFW Detected', `${customWarning}\nAction: **${s.nsfwPunish.toUpperCase()}**`, message.guild, client, s);
            setTimeout(() => warningMsg.delete().catch(() => {}), 5000);
