@@ -45,7 +45,6 @@ function checkViolation(text, bannedWord) {
     return false;
 }
 
-// UPDATED: Now uses client instead of guild for embeds
 async function sendMessage(target, type, title, fields, guild, client, s) {
     let formattedDesc = "";
     if (Array.isArray(fields)) {
@@ -55,11 +54,12 @@ async function sendMessage(target, type, title, fields, guild, client, s) {
     }
 
     if (s.useEmbeds) {
+        // Calls the embed builder which handles the custom emoji prefix
         const embed = await embeds[type](title, formattedDesc, guild, client);
         return target.reply({ embeds: [embed] });
     } else {
-        const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : type === 'warning' ? '⚠️' : 'ℹ️';
-        return target.reply({ content: `${icon} **${title}**\n${formattedDesc}` });
+        // Plain text fallback (no icons)
+        return target.reply({ content: `**${title}**\n${formattedDesc}` });
     }
 }
 
