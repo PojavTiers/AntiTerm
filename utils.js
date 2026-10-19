@@ -99,7 +99,7 @@ function getNsfwThreshold(mode) {
     return 0.5; 
 }
 
-// --- NEW: FAST VIDEO COLLAGE GENERATOR ---
+// --- NEW: FAST VIDEO COLLAGE GENERATOR (6 FRAMES) ---
 async function createVideoCollage(videoBuffer) {
     const tempVideoPath = path.join(os.tmpdir(), `vid_${Date.now()}.mp4`);
     const outputPath = path.join(os.tmpdir(), `collage_${Date.now()}.jpg`);
@@ -110,9 +110,9 @@ async function createVideoCollage(videoBuffer) {
             ffmpeg(tempVideoPath)
                 .on('end', resolve)
                 .on('error', reject)
-                // This filter grabs 4 frames and puts them in a 2x2 grid
+                // This filter grabs 6 frames and puts them in a 2x3 grid
                 .outputOptions([
-                    '-vf', 'select=\'gte(n,1)\',scale=320:240,tile=2x2',
+                    '-vf', 'select=\'gte(n,1)\',scale=320:240,tile=2x3', // 2 columns, 3 rows
                     '-frames:v', '1',
                     '-q:v', '5' // Lower quality = faster upload/scan
                 ])
