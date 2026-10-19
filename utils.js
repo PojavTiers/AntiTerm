@@ -89,7 +89,14 @@ async function applyPunishment(member, type, durationStr, reason, message, clien
     }
 }
 
+// NEW: Translates the mode into an AI Threshold
+function getNsfwThreshold(mode) {
+    if (mode === 'basic') return 0.7;
+    if (mode === 'advanced') return 0.3;
+    return 0.5; // Moderate default
+}
+
 module.exports = {
-    normalise, checkViolation, sendMessage, isAuthorized, applyPunishment,
+    normalise, checkViolation, sendMessage, isAuthorized, applyPunishment, getNsfwThreshold,
     EXTREME_SLURS, MEDIUM_INSULTS, SAFE_WORDS
 };
