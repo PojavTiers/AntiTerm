@@ -2,12 +2,14 @@ const { Client, GatewayIntentBits } = require('discord.js');
 const gifFrames = require('gif-frames');
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegPath = require('ffmpeg-static');
+const ffprobePath = require('ffprobe-static').path;
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-// Tell fluent-ffmpeg where the static binary is
+// Tell fluent-ffmpeg where the static binaries are
 ffmpeg.setFfmpegPath(ffmpegPath);
+ffmpeg.setFfprobePath(ffprobePath);
 
 const client = new Client({
   intents: [
@@ -104,6 +106,7 @@ client.on('messageCreate', async (message) => {
       try {
         let finalUrl = mediaUrl;
         
+        // Scrape if it's a webpage link (like Klipy/Tenor)
         if (!finalUrl.match(/\.(jpeg|jpg|png|gif|mp4|webm)/i) && !finalUrl.includes('cdn.discordapp.com')) {
             const webRes = await fetch(finalUrl);
             const html = await webRes.text();
@@ -116,69 +119,75 @@ client.on('messageCreate', async (message) => {
         }
 
         const isVideo = finalUrl.toLowerCase().includes('.mp4') || finalUrl.toLowerCase().includes('.webm');
+        const isGif = finalUrl.toLowerCase().includes('.gif');
         
         const imageResponse = await fetch(finalUrl);
         const contentType = imageResponse.headers.get('content-type');
         const imageBuffer = await imageResponse.arrayBuffer();
         const buffer = Buffer.from(imageBuffer);
 
+        // --- VIDEO LOGIC (FFmpeg) ---
         if (isVideo) {
           console.log(`[DEBUG] Extracting frames from VIDEO using FFmpeg...`);
           
           const tempVideoPath = path.join(os.tmpdir(), `vid_${Date.now()}.mp4`);
-          const tempFramePattern = path.join(os.tmpdir(), `frame_${Date.now()}_%03d.jpg`);
+          const framePrefix = `frame_${Date.now()}`;
           
           fs.writeFileSync(tempVideoPath, buffer);
 
-          await new Promise((resolve, reject) => {
-            ffmpeg(tempVideoPath)
-              .on('end', resolve)
-              .on('error', reject)
-              .screenshots({
-                count: 3, 
-                folder: os.tmpdir(),
-                filename: path.basename(tempFramePattern),
-                size: '640x?' // Downscale to save API memory
-              });
-          });
-
-          // Find the generated frames in the temp folder
-          const files = fs.readdirSync(os.tmpdir()).filter(f => f.startsWith(path.basename(tempFramePattern).split('%')[0]));
-          
-          for (const file of files) {
-            const framePath = path.join(os.tmpdir(), file);
-            const frameBuffer = fs.readFileSync(framePath);
-            
-            const formData = new FormData();
-            formData.append('image', new Blob([frameBuffer], { type: 'image/jpeg' }), 'frame.jpg');
-            
-            const apiRes = await fetch(process.env.NSFW_API_URL + '/classify', {
-              method: 'POST',
-              headers: { 'Authorization': `Bearer ${process.env.API_KEY}` },
-              body: formData
+          try {
+            await new Promise((resolve, reject) => {
+              ffmpeg(tempVideoPath)
+                .on('end', resolve)
+                .on('error', reject)
+                .screenshots({
+                  count: 3,
+                  folder: os.tmpdir(),
+                  filename: `${framePrefix}_%i.jpg`,
+                  size: '640x?' 
+                });
             });
-            const rawText = await apiRes.text();
-            console.log(`[DEBUG] Video Frame RESPONSE:`, rawText);
-            const data = JSON.parse(rawText);
-            
-            // Clean up the frame
-            fs.unlinkSync(framePath);
 
-            if (data.safe === false || (data.scores && (data.scores.nsfw > 0.4 || data.scores.sexy > 0.4 || data.scores.hentai > 0.4 || data.scores.porn > 0.4))) {
-              fs.unlinkSync(tempVideoPath); // Clean up video
-              await message.delete().catch(() => {});
-              const warning = await message.channel.send(`⚠️ ${message.author}, NSFW videos are not allowed here.`);
-              setTimeout(() => warning.delete().catch(() => {}), 5000);
-              return; 
+            const files = fs.readdirSync(os.tmpdir()).filter(f => f.startsWith(framePrefix));
+            
+            for (const file of files) {
+              const framePath = path.join(os.tmpdir(), file);
+              const frameBuffer = fs.readFileSync(framePath);
+              
+              const formData = new FormData();
+              formData.append('image', new Blob([frameBuffer], { type: 'image/jpeg' }), 'frame.jpg');
+              
+              const apiRes = await fetch(process.env.NSFW_API_URL + '/classify', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${process.env.API_KEY}` },
+                body: formData
+              });
+              const rawText = await apiRes.text();
+              console.log(`[DEBUG] Video Frame RESPONSE:`, rawText);
+              const data = JSON.parse(rawText);
+              
+              fs.unlinkSync(framePath); // Clean up frame
+
+              if (data.safe === false || (data.scores && (data.scores.nsfw > 0.4 || data.scores.sexy > 0.4 || data.scores.hentai > 0.4 || data.scores.porn > 0.4))) {
+                fs.unlinkSync(tempVideoPath); // Clean up video
+                await message.delete().catch(() => {});
+                const warning = await message.channel.send(`⚠️ ${message.author}, NSFW videos are not allowed here.`);
+                setTimeout(() => warning.delete().catch(() => {}), 5000);
+                return; 
+              }
             }
+            fs.unlinkSync(tempVideoPath); // Clean up video if safe
+            console.log('[DEBUG] All video frames safe.');
+            return;
+          } catch (err) {
+            console.log("[DEBUG] FFmpeg failed to process this video format.");
+            if (fs.existsSync(tempVideoPath)) fs.unlinkSync(tempVideoPath);
+            return;
           }
-          fs.unlinkSync(tempVideoPath); // Clean up video if safe
-          console.log('[DEBUG] All video frames safe.');
-          return;
         }
 
         // --- GIF LOGIC ---
-        if (finalUrl.toLowerCase().includes('.gif')) { 
+        if (isGif) { 
           console.log(`[DEBUG] Extracting GIF frames...`);
           try {
               const frameData = await gifFrames({ url: buffer, frames: 'all', outputType: 'jpeg', cumulative: true });
@@ -217,11 +226,12 @@ client.on('messageCreate', async (message) => {
                   return; 
               }
           } catch (e) {
-              console.log('[DEBUG] GIF extraction failed.');
+              console.log('[DEBUG] GIF extraction failed, trying static fallback.');
           }
         }
         
         // --- STATIC IMAGE FALLBACK ---
+        console.log(`[DEBUG] Scanning as static image...`);
         const blob = new Blob([imageBuffer], { type: contentType || 'image/jpeg' });
         const formData = new FormData();
         formData.append('image', blob, 'image.jpg');
