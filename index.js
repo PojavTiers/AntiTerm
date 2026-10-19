@@ -437,4 +437,5 @@ ${arrow} **Punishment:** \`${s.msgPunish}\`
 
 // Start Bot
 connectDB().then(() => {
-client.login(process.env.DISCORD_TOKEN);
+    client.login(process.env.DISCORD_TOKEN);
+});
