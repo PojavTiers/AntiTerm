@@ -4,6 +4,7 @@ const ffmpeg = require('fluent-ffmpeg');
 const ffmpegPath = require('ffmpeg-static');
 const ffprobePath = require('ffprobe-static').path;
 const levenshtein = require('fast-levenshtein');
+const mongoose = require('mongoose');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -22,7 +23,32 @@ const client = new Client({
   ],
 });
 
-const settings = new Map();
+// ==========================================
+// 🗄️ DATABASE SETUP
+// ==========================================
+const settingsSchema = new mongoose.Schema({
+    guildId: { type: String, required: true, unique: true },
+    antiNsfw: { type: Boolean, default: false },
+    nsfwPunish: { type: String, default: 'delete' },
+    nsfwDur: { type: String, default: '1h' },
+    termMessages: { type: Boolean, default: false },
+    sensitivity: { type: Number, default: 0.5 },
+    msgPunish: { type: String, default: 'delete' },
+    msgDur: { type: String, default: '1h' },
+    words: { type: [String], default: [] },
+    allowedUsers: { type: [String], default: [] }
+});
+
+const GuildSettings = mongoose.model('GuildSettings', settingsSchema);
+const settingsCache = new Map();
+
+async function getSettings(guildId) {
+    if (settingsCache.has(guildId)) return settingsCache.get(guildId);
+    let s = await GuildSettings.findOne({ guildId });
+    if (!s) s = await GuildSettings.create({ guildId });
+    settingsCache.set(guildId, s);
+    return s;
+}
 
 // ==========================================
 // 🚨 WORD LISTS & SAFE WORDS 🚨
@@ -220,13 +246,11 @@ client.once('clientReady', async () => {
   try { await client.application.commands.set(commands); } catch (e) { console.error(e); }
 });
 
-// --- AUTO UPDATE EMOJIS ---
 client.on('emojiCreate', async (emoji) => {
     console.log(`[DEBUG] New emoji added: ${emoji.name}. Cache updated!`);
     await emoji.guild.emojis.fetch();
 });
 
-// --- SLASH COMMANDS ---
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand() && !interaction.isButton()) return;
   
@@ -235,8 +259,7 @@ client.on('interactionCreate', async (interaction) => {
       return;
   }
 
-  if (!settings.has(interaction.guild.id)) settings.set(interaction.guild.id, { antiNsfw: false, nsfwPunish: 'delete', nsfwDur: '1h', termMessages: false, sensitivity: 0.5, msgPunish: 'delete', msgDur: '1h', words: [], allowedUsers: [] });
-  const s = settings.get(interaction.guild.id);
+  const s = await getSettings(interaction.guild.id);
 
   if (!isAuthorized(interaction.member, s)) return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
 
@@ -247,6 +270,8 @@ client.on('interactionCreate', async (interaction) => {
     s.antiNsfw = (state === 'on');
     if (punish) s.nsfwPunish = punish;
     if (dur) s.nsfwDur = dur;
+    await s.save();
+
     const title = `Filtering **NSFW** ${state === 'on' ? 'On' : 'Off'}`;
     const desc = `- **Filtering:** \`${state}\`\n- **Punishment:** \`${s.nsfwPunish}\`${s.nsfwPunish === 'mute' ? ` (\`${s.nsfwDur}\`)` : ''}`;
     return interaction.reply({ embeds: [embeds.success(title, desc, interaction.guild, client)] });
@@ -261,6 +286,8 @@ client.on('interactionCreate', async (interaction) => {
     if (sensInput) s.sensitivity = parseFloat(sensInput);
     if (punish) s.msgPunish = punish;
     if (dur) s.msgDur = dur;
+    await s.save();
+
     const title = `Filtering **Messages** ${state === 'on' ? 'On' : 'Off'}`;
     const desc = `- **Filtering:** \`${state}\`\n- **Sensitivity:** \`${s.sensitivity}\`\n- **Punishment:** \`${s.msgPunish}\`${s.msgPunish === 'mute' ? ` (\`${s.msgDur}\`)` : ''}`;
     return interaction.reply({ embeds: [embeds.success(title, desc, interaction.guild, client)] });
@@ -277,12 +304,14 @@ client.on('interactionCreate', async (interaction) => {
     if (action === 'add') {
       if (s.words.includes(word)) return interaction.reply({ embeds: [embeds.error('Already Added', 'Word exists.', interaction.guild, client)] });
       s.words.push(word);
+      await s.save();
       return interaction.reply({ embeds: [embeds.success('Word Added', `Added \`${word}\`.`, interaction.guild, client)] });
     }
     if (action === 'remove') {
       const index = s.words.indexOf(word);
       if (index === -1) return interaction.reply({ embeds: [embeds.error('Not Found', 'Word not found.', interaction.guild, client)] });
       s.words.splice(index, 1);
+      await s.save();
       return interaction.reply({ embeds: [embeds.success('Word Removed', `Removed \`${word}\`.`, interaction.guild, client)] });
     }
   }
@@ -298,23 +327,23 @@ client.on('interactionCreate', async (interaction) => {
     if (action === 'add') {
       if (s.allowedUsers.includes(user.id)) return interaction.reply({ embeds: [embeds.error('Already Added', 'User is already authorized.', interaction.guild, client)] });
       s.allowedUsers.push(user.id);
+      await s.save();
       return interaction.reply({ embeds: [embeds.success('Admin Added', `Added <@${user.id}> to authorized users.`, interaction.guild, client)] });
     }
     if (action === 'remove') {
       const index = s.allowedUsers.indexOf(user.id);
       if (index === -1) return interaction.reply({ embeds: [embeds.error('Not Found', 'User is not in the list.', interaction.guild, client)] });
       s.allowedUsers.splice(index, 1);
+      await s.save();
       return interaction.reply({ embeds: [embeds.success('Admin Removed', `Removed <@${user.id}> from authorized users.`, interaction.guild, client)] });
     }
   }
 });
 
-// --- PREFIX COMMANDS & MESSAGE FILTER ---
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild) return;
 
-  if (!settings.has(message.guild.id)) settings.set(message.guild.id, { antiNsfw: false, nsfwPunish: 'delete', nsfwDur: '1h', termMessages: false, sensitivity: 0.5, msgPunish: 'delete', msgDur: '1h', words: [], allowedUsers: [] });
-  const s = settings.get(message.guild.id);
+  const s = await getSettings(message.guild.id);
 
   if (message.content.startsWith('$')) {
       if (!isAuthorized(message.member, s)) {
@@ -363,6 +392,7 @@ client.on('messageCreate', async (message) => {
         if (match[3]) s.msgPunish = match[3].toLowerCase();
         if (match[4]) s.msgDur = match[4].toLowerCase();
         s.termMessages = (state === 'on');
+        await s.save();
 
         const title = `Filtering **Messages** ${state === 'on' ? 'On' : 'Off'}`;
         const desc = `- **Filtering:** \`${state}\`\n- **Sensitivity:** \`${s.sensitivity}\`\n- **Punishment:** \`${s.msgPunish}\`${s.msgPunish === 'mute' ? ` (\`${s.msgDur}\`)` : ''}`;
@@ -377,6 +407,7 @@ client.on('messageCreate', async (message) => {
         if (match[2]) s.nsfwPunish = match[2].toLowerCase();
         if (match[3]) s.nsfwDur = match[3].toLowerCase();
         s.antiNsfw = (state === 'on');
+        await s.save();
 
         const title = `Filtering **NSFW** ${state === 'on' ? 'On' : 'Off'}`;
         const desc = `- **Filtering:** \`${state}\`\n- **Punishment:** \`${s.nsfwPunish}\`${s.nsfwPunish === 'mute' ? ` (\`${s.nsfwDur}\`)` : ''}`;
@@ -386,7 +417,6 @@ client.on('messageCreate', async (message) => {
       return; 
   }
 
-  // --- TEXT FILTER EXECUTION ---
   if (s.termMessages) {
     let violation = false;
     if (s.words.some(w => checkViolation(message.content, w))) violation = true;
@@ -403,7 +433,6 @@ client.on('messageCreate', async (message) => {
     }
   }
 
-  // --- AI SCANNER EXECUTION ---
   if (s.antiNsfw) {
      let mediaUrl = null;
      if (message.attachments.size > 0) mediaUrl = message.attachments.first().url;
@@ -481,4 +510,19 @@ client.on('messageCreate', async (message) => {
   }
 });
 
-client.login(process.env.DISCORD_TOKEN);
+// Connect to MongoDB, then log in
+(async () => {
+    const mongoUri = process.env.MONGO_URL;
+    if (mongoUri) {
+        console.log('[DEBUG] Attempting to connect to MongoDB...');
+        try {
+            await mongoose.connect(mongoUri);
+            console.log(`[DEBUG] Connected to MongoDB successfully!`);
+        } catch (err) {
+            console.error(`[DEBUG] MongoDB connection error:`, err.message);
+        }
+    } else {
+        console.log(`[DEBUG] No MONGO_URL found. Settings will not be saved permanently.`);
+    }
+    client.login(process.env.DISCORD_TOKEN);
+})();
