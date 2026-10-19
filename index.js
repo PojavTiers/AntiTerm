@@ -29,8 +29,8 @@ const settings = new Map();
 // ==========================================
 // YOU MUST FILL IN THE EXTREME SLURS HERE.
 // (Websites mix normal swears with slurs, so we keep the absolute worst ones hardcoded to protect your server).
-const EXTREME_SLURS = ['put_racial_slurs_here', 'put_extreme_slurs_here']; 
-const MEDIUM_INSULTS = ['asshole', 'bastard', 'retard', 'whore', 'slut'];
+const EXTREME_SLURS = ['Nigger', 'pedo', 'pedophile', 'i love touching kids', 'pdofile', 'pedo📁', 'children', 'molest', 'rape', 'ill rape you', 'uranigger', 'child porn', 'cp']; 
+const MEDIUM_INSULTS = ['asshole', 'bastard', 'retard', 'whore', 'slut', 'fucktard', 'faggot', 'retarded', 'bitch', 'forced sex', 'sex', 'esex', 'gay sex', 'porn', 'gay porn'];
 
 let WEB_PROFANITY_LIST = []; // This will hold the downloaded words
 
