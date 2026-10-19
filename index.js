@@ -26,13 +26,45 @@ const client = new Client({
   ],
 });
 
+// THESE ARE NOW GLOBAL ARRAYS THAT GET POPULATED FROM THE WEB
+let EXTREME_SLURS_WEB = [];
+let MEDIUM_INSULTS_WEB = [];
 let WEB_PROFANITY_LIST = [];
+
 async function fetchWebProfanity() {
     try {
-        const response = await fetch('https://raw.githubusercontent.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words/master/en');
-        const text = await response.text();
-        WEB_PROFANITY_LIST = text.split('\n').map(w => w.trim().toLowerCase()).filter(w => w.length > 2 && !SAFE_WORDS.includes(w));
-    } catch (e) { console.error('[DEBUG] Failed to fetch profanity list:', e); }
+        // Fetching the JSON list that has severity levels built-in
+        const response = await fetch('https://cdn.jsdelivr.net/npm/@dsojevic/profanity-list@1.0.0/en.json');
+        const data = await response.json();
+
+        // Clear lists first
+        EXTREME_SLURS_WEB = [];
+        MEDIUM_INSULTS_WEB = [];
+        WEB_PROFANITY_LIST = [];
+
+        // Sort words based on their "severity" (1 to 4)
+        data.forEach(item => {
+            if (!item.match) return;
+            const word = item.match.toLowerCase();
+            const severity = item.severity || 3; // Default to 3 if missing
+
+            // Ignore safe words
+            if (SAFE_WORDS.includes(word)) return;
+
+            if (severity === 4) {
+                EXTREME_SLURS_WEB.push(word);
+            } else if (severity === 3) {
+                MEDIUM_INSULTS_WEB.push(word);
+            } else {
+                // Severity 1 and 2 go to the normal profanity list
+                WEB_PROFANITY_LIST.push(word);
+            }
+        });
+
+        console.log(`[DEBUG] Downloaded Web Lists: Extreme(${EXTREME_SLURS_WEB.length}), Medium(${MEDIUM_INSULTS_WEB.length}), Normal(${WEB_PROFANITY_LIST.length})`);
+    } catch (e) { 
+        console.error('[DEBUG] Failed to fetch profanity list:', e); 
+    }
 }
 
 function getTopFlag(scores) {
@@ -279,14 +311,12 @@ ${arrow} **Punishment:** \`${s.msgPunish}\`
         return message.reply({ embeds: [embed] });
       }
 
-      // --- CUSTOM FORMAT FOR FILTER ---
       if (filterAliases.includes(cmd)) {
         const action = args[0]?.toLowerCase();
         const word = args[1]?.toLowerCase();
         
         const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
 
-        // If no action provided, show guide
         if (action !== 'add' && action !== 'remove' && action !== 'list') {
             const desc = `
 ${arrow} **Filtered Words:** ${s.words.length}
@@ -303,17 +333,15 @@ ${arrow} \`$Filter list\`
             if (s.words.length === 0) return sendMessage(message, 'warning', 'Empty', ['No custom words.'], message.guild, client, s);
             return sendMessage(message, 'info', 'Filtered Words', [`\`${s.words.join('`, `')}\``], message.guild, client, s);
         }
-        
         if (!word) return sendMessage(message, 'error', 'Error', ['Provide a word to add or remove.'], message.guild, client, s);
         
         if (action === 'add') {
             if (s.words.includes(word)) return sendMessage(message, 'error', 'Already Added', ['Word exists.'], message.guild, client, s);
             s.words.push(word);
-            s.termMessages = true; // Automatically turn on the text filter so it works
+            s.termMessages = true; 
             await s.save();
             return sendMessage(message, 'success', 'Word Added', [`Added \`${word}\` to the filter (Text Filtering turned ON).`], message.guild, client, s);
         }
-        
         if (action === 'remove') {
             const index = s.words.indexOf(word);
             if (index === -1) return sendMessage(message, 'error', 'Not Found', ['Word not found.'], message.guild, client, s);
@@ -332,10 +360,16 @@ ${arrow} \`$Filter list\`
     if (message.messageSnapshots.size > 0) textToScan += " " + message.messageSnapshots.first().content;
 
     let violation = false;
+    
+    // Check custom words first
     if (s.words.some(w => checkViolation(textToScan, w))) violation = true;
-    else if (EXTREME_SLURS.some(w => checkViolation(textToScan, w))) violation = true;
-    else if (s.sensitivity >= 0.4 && MEDIUM_INSULTS.some(w => checkViolation(textToScan, w))) violation = true;
-    else if (s.sensitivity >= 0.7 && WEB_PROFANITY_LIST.some(w => checkViolation(textToScan, w))) violation = true;
+    
+    // If not custom, check the web lists based on sensitivity
+    if (!violation) {
+        if (s.sensitivity >= 0.1 && EXTREME_SLURS_WEB.some(w => checkViolation(textToScan, w))) violation = true;
+        else if (s.sensitivity >= 0.4 && MEDIUM_INSULTS_WEB.some(w => checkViolation(textToScan, w))) violation = true;
+        else if (s.sensitivity >= 0.7 && WEB_PROFANITY_LIST.some(w => checkViolation(textToScan, w))) violation = true;
+    }
 
     if (violation) {
         await message.delete().catch(() => {});
@@ -444,7 +478,6 @@ ${arrow} \`$Filter list\`
          
          const warningText = `<@${message.author.id}> That image is not allowed on this server, flagged \`${censoredFlag}\``;
          
-         // DIRECTLY CREATING AND SENDING THE EMBED HERE
          const embed = await embeds.warning('', warningText, message.guild, client, 'General');
          const warningMsg = await message.channel.send({ embeds: [embed] }).catch(e => console.error("Failed to send warning:", e));
          
