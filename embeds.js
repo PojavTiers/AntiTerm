@@ -18,8 +18,8 @@ function createEmbed(type, title, description, guild, client, category = 'Genera
     let color = '#5865F2'; // Default Blue
     let icon = 'ℹ️';
 
-    if (type === 'success') { color = '#57F287'; icon = getEmoji(guild, 'success', '✅'); }
-    if (type === 'error') { color = '#ED4245'; icon = getEmoji(guild, 'error', '❌'); }
+    if (type === 'success') { color = '#3eff00'; icon = getEmoji(guild, 'success', '✅'); }
+    if (type === 'error') { color = '#ff1212'; icon = getEmoji(guild, 'error', '❌'); }
     if (type === 'warning') { color = '#FEE75C'; icon = getEmoji(guild, 'warning', '⚠️'); }
     if (type === 'shield') { color = '#2B2D31'; icon = getEmoji(guild, 'shield', '🛡️'); }
 
