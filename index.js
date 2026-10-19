@@ -279,22 +279,41 @@ ${arrow} **Punishment:** \`${s.msgPunish}\`
         return message.reply({ embeds: [embed] });
       }
 
+      // --- CUSTOM FORMAT FOR FILTER ---
       if (filterAliases.includes(cmd)) {
         const action = args[0]?.toLowerCase();
         const word = args[1]?.toLowerCase();
+        
+        const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
+
+        // If no action provided, show guide
+        if (action !== 'add' && action !== 'remove' && action !== 'list') {
+            const desc = `
+${arrow} **Filtered Words:** ${s.words.length}
+${arrow} **Examples:**
+${arrow} \`$Filter add <word>\`
+${arrow} \`$Filter remove <word>\`
+${arrow} \`$Filter list\`
+            `;
+            const embed = await embeds.info('', desc, message.guild, client, 'General');
+            return message.reply({ embeds: [embed] });
+        }
 
         if (action === 'list') {
             if (s.words.length === 0) return sendMessage(message, 'warning', 'Empty', ['No custom words.'], message.guild, client, s);
             return sendMessage(message, 'info', 'Filtered Words', [`\`${s.words.join('`, `')}\``], message.guild, client, s);
         }
-        if (!word) return sendMessage(message, 'error', 'Error', ['Provide a word.'], message.guild, client, s);
+        
+        if (!word) return sendMessage(message, 'error', 'Error', ['Provide a word to add or remove.'], message.guild, client, s);
         
         if (action === 'add') {
             if (s.words.includes(word)) return sendMessage(message, 'error', 'Already Added', ['Word exists.'], message.guild, client, s);
             s.words.push(word);
+            s.termMessages = true; // Automatically turn on the text filter so it works
             await s.save();
-            return sendMessage(message, 'success', 'Word Added', [`Added \`${word}\`.`], message.guild, client, s);
+            return sendMessage(message, 'success', 'Word Added', [`Added \`${word}\` to the filter (Text Filtering turned ON).`], message.guild, client, s);
         }
+        
         if (action === 'remove') {
             const index = s.words.indexOf(word);
             if (index === -1) return sendMessage(message, 'error', 'Not Found', ['Word not found.'], message.guild, client, s);
