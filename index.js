@@ -25,68 +25,111 @@ const client = new Client({
 const settings = new Map();
 
 // ==========================================
-// 🚨 WORD LISTS & WEB FETCHING 🚨
+// 🚨 WORD LISTS 🚨
 // ==========================================
-// YOU MUST FILL IN THE EXTREME SLURS HERE.
-// (Websites mix normal swears with slurs, so we keep the absolute worst ones hardcoded to protect your server).
-const EXTREME_SLURS = ['Nigger', 'pedo', 'pedophile', 'i love touching kids', 'pdofile', 'pedo📁', 'children', 'molest', 'rape', 'ill rape you', 'uranigger', 'child porn', 'cp']; 
-const MEDIUM_INSULTS = ['asshole', 'bastard', 'retard', 'whore', 'slut', 'fucktard', 'faggot', 'retarded', 'bitch', 'forced sex', 'sex', 'esex', 'gay sex', 'porn', 'gay porn'];
-
-let WEB_PROFANITY_LIST = []; // This will hold the downloaded words
+const EXTREME_SLURS = ['put_racial_slurs_here', 'put_extreme_slurs_here']; 
+const MEDIUM_INSULTS = ['asshole', 'bastard', 'retard', 'whore', 'slut'];
+let WEB_PROFANITY_LIST = [];
 
 async function fetchWebProfanity() {
     try {
-        console.log('[DEBUG] Downloading bad words from GitHub...');
-        // Fetching a massive list of 400+ bad words from the LDNOOBW GitHub repo
         const response = await fetch('https://raw.githubusercontent.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words/master/en');
         const text = await response.text();
-        
-        // Split by new lines and clean up the words
         WEB_PROFANITY_LIST = text.split('\n').map(w => w.trim().toLowerCase()).filter(w => w.length > 2);
-        console.log(`[DEBUG] Successfully downloaded ${WEB_PROFANITY_LIST.length} bad words from the web!`);
-    } catch (e) {
-        console.error('[DEBUG] Failed to fetch web profanity list:', e);
-    }
+        console.log(`[DEBUG] Downloaded ${WEB_PROFANITY_LIST.length} bad words.`);
+    } catch (e) { console.error('[DEBUG] Failed to fetch profanity list:', e); }
 }
 
-// Advanced Normalisation (strips invisible chars, fixes homoglyphs, leetspeak, etc.)
+// --- HELPERS ---
+
 function normalise(text) {
-  return text
-    .toLowerCase()
-    .normalize('NFKC') // Fixes weird foreign letters that look like English
-    .replace(/[\u200B-\u200D\uFEFF]/g, '') // Removes invisible zero-width spaces
-    .replace(/0/g, 'o').replace(/1/g, 'i').replace(/3/g, 'e')
-    .replace(/4/g, 'a').replace(/5/g, 's').replace(/7/g, 't')
-    .replace(/@/g, 'a').replace(/\$/g, 's')
-    .replace(/[^a-z]/g, ''); // Removes everything that isn't a letter
+  return text.toLowerCase().normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/0/g, 'o').replace(/1/g, 'i').replace(/3/g, 'e').replace(/4/g, 'a').replace(/5/g, 's').replace(/7/g, 't').replace(/@/g, 'a').replace(/\$/g, 's').replace(/[^a-z]/g, '');
 }
 
-// Advanced Fuzzy Matching (Checks if a word is close to a banned word)
 function isCloseEnough(input, target) {
     if (!input || !target) return false;
-    const dist = levenshtein.get(input, target);
-    const threshold = target.length > 5 ? 2 : 1;
-    return dist <= threshold;
+    return levenshtein.get(input, target) <= (target.length > 5 ? 2 : 1);
+}
+
+function checkViolation(messageContent, bannedWord) {
+    const cleanBanned = normalise(bannedWord);
+    if (!cleanBanned) return false;
+    const rawWords = messageContent.split(/ +/);
+    for (const rawWord of rawWords) {
+        const cleanSingle = normalise(rawWord);
+        if (cleanSingle.length >= 3 && isCloseEnough(cleanSingle, cleanBanned)) return true;
+        if (cleanSingle === cleanBanned) return true;
+    }
+    if (cleanBanned.length > 3) {
+        const fullClean = normalise(messageContent);
+        if (fullClean.includes(cleanBanned)) return true;
+        if (fullClean.replace(/(.)\1{2,}/g, '$1').includes(cleanBanned)) return true;
+    }
+    return false;
+}
+
+// Converts "1h", "10m", "1d" to milliseconds for Discord Timeout
+function parseDuration(str) {
+    if (!str) return 3600000; // Default 1 hour
+    const match = str.match(/^(\d+)([smhd])$/i);
+    if (!match) return 3600000;
+    const val = parseInt(match[1]);
+    const unit = match[2].toLowerCase();
+    if (unit === 's') return val * 1000;
+    if (unit === 'm') return val * 60000;
+    if (unit === 'h') return val * 3600000;
+    if (unit === 'd') return val * 86400000;
+    return 3600000;
+}
+
+// Executes the actual punishment
+async function applyPunishment(member, type, durationStr, reason, message, client) {
+    if (type === 'delete' || !type) return; // Delete only
+    try {
+        if (type === 'mute') {
+            const ms = parseDuration(durationStr);
+            await member.timeout(ms, reason);
+        } else if (type === 'kick') {
+            await member.kick(reason);
+        } else if (type === 'ban') {
+            await member.ban({ reason });
+        }
+    } catch (e) {
+        console.error(`Failed to ${type} user:`, e);
+        message.channel.send({ embeds: [embeds.error('Punishment Failed', `Could not ${type} the user. Check my role position and permissions!`, client)] });
+    }
 }
 
 client.once('clientReady', async () => {
   console.log(`✅ ${client.user.tag} is online!`);
-  
-  // Download the web list on startup
   await fetchWebProfanity();
+
+  const punishmentOptions = [
+      { name: 'Delete Only', value: 'delete' },
+      { name: 'Mute', value: 'mute' },
+      { name: 'Kick', value: 'kick' },
+      { name: 'Ban', value: 'ban' }
+  ];
 
   const commands = [
     {
       name: 'antinsfw',
-      description: 'Toggle the AI NSFW image/video scanner',
-      options: [{ name: 'state', description: 'On or off', type: 3, required: true, choices: [{ name: 'On', value: 'on' }, { name: 'Off', value: 'off' }] }]
+      description: 'Configure AI NSFW image/video scanner',
+      options: [
+        { name: 'state', description: 'On or off', type: 3, required: true, choices: [{ name: 'On', value: 'on' }, { name: 'Off', value: 'off' }] },
+        { name: 'punishment', description: 'What to do when NSFW is found', type: 3, required: false, choices: punishmentOptions },
+        { name: 'duration', description: 'Mute duration (e.g. 10m, 1h, 1d). Ignored for kick/ban.', type: 3, required: false }
+      ]
     },
     {
       name: 'antinsfwmessages',
-      description: 'Toggle text filter and set sensitivity',
+      description: 'Configure text filter and sensitivity',
       options: [
         { name: 'state', description: 'On or off', type: 3, required: true, choices: [{ name: 'On', value: 'on' }, { name: 'Off', value: 'off' }] },
-        { name: 'sensitivity', description: '0.1 (Slurs only) to 0.9 (Everything)', type: 3, required: false }
+        { name: 'sensitivity', description: '0.1 (Slurs only) to 0.9 (Everything)', type: 3, required: false },
+        { name: 'punishment', description: 'What to do when bad words are found', type: 3, required: false, choices: punishmentOptions },
+        { name: 'duration', description: 'Mute duration (e.g. 10m, 1h, 1d). Ignored for kick/ban.', type: 3, required: false }
       ]
     },
     {
@@ -105,27 +148,42 @@ client.once('clientReady', async () => {
 // --- SLASH COMMANDS ---
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
-  if (!settings.has(interaction.guild.id)) settings.set(interaction.guild.id, { antiNsfw: false, termMessages: false, sensitivity: 0.5, words: [] });
-  const serverSettings = settings.get(interaction.guild.id);
+  if (!settings.has(interaction.guild.id)) settings.set(interaction.guild.id, { 
+      antiNsfw: false, nsfwPunish: 'delete', nsfwDur: '1h',
+      termMessages: false, sensitivity: 0.5, msgPunish: 'delete', msgDur: '1h', 
+      words: [] 
+  });
+  const s = settings.get(interaction.guild.id);
 
   if (interaction.commandName === 'antinsfw') {
     const state = interaction.options.getString('state');
-    serverSettings.antiNsfw = (state === 'on');
-    return interaction.reply({ embeds: [embeds.success(`AntiNSFW ${state.toUpperCase()}`, `AI Media scanning is now ${state}.`, client)] });
+    const punish = interaction.options.getString('punishment');
+    const dur = interaction.options.getString('duration');
+    
+    s.antiNsfw = (state === 'on');
+    if (punish) s.nsfwPunish = punish;
+    if (dur) s.nsfwDur = dur;
+
+    return interaction.reply({ embeds: [embeds.success(`AntiNSFW ${state.toUpperCase()}`, `Scanning is **${state}**.\nPunishment: **${s.nsfwPunish}** (${s.nsfwDur} if mute)`, client)] });
   }
 
   if (interaction.commandName === 'antinsfwmessages') {
     const state = interaction.options.getString('state');
     const sensInput = interaction.options.getString('sensitivity');
-    serverSettings.termMessages = (state === 'on');
+    const punish = interaction.options.getString('punishment');
+    const dur = interaction.options.getString('duration');
+    
+    s.termMessages = (state === 'on');
 
-    let sensText = `Current sensitivity: **${serverSettings.sensitivity}**`;
     if (sensInput) {
         const parsed = parseFloat(sensInput);
-        if (parsed >= 0.1 && parsed <= 0.9) { serverSettings.sensitivity = parsed; sensText = `Sensitivity set to: **${parsed}**`; }
+        if (parsed >= 0.1 && parsed <= 0.9) s.sensitivity = parsed;
         else return interaction.reply({ embeds: [embeds.error('Invalid Sensitivity', 'Must be between 0.1 and 0.9.', client)] });
     }
-    return interaction.reply({ embeds: [embeds.success(`Term Filter ${state.toUpperCase()}`, `Filter is ${state}.\n${sensText}`, client)] });
+    if (punish) s.msgPunish = punish;
+    if (dur) s.msgDur = dur;
+
+    return interaction.reply({ embeds: [embeds.success(`Text Filter ${state.toUpperCase()}`, `Filter is **${state}**.\nSensitivity: **${s.sensitivity}**\nPunishment: **${s.msgPunish}** (${s.msgDur} if mute)`, client)] });
   }
 
   if (interaction.commandName === 'antibypassfilter') {
@@ -133,20 +191,20 @@ client.on('interactionCreate', async (interaction) => {
     const word = interaction.options.getString('word')?.toLowerCase().trim();
 
     if (action === 'list') {
-      if (serverSettings.words.length === 0) return interaction.reply({ embeds: [embeds.warning('Empty', 'No custom words.', client)] });
-      return interaction.reply({ embeds: [embeds.info('Filtered Words', `\`${serverSettings.words.join('`, `')}\``, client)] });
+      if (s.words.length === 0) return interaction.reply({ embeds: [embeds.warning('Empty', 'No custom words.', client)] });
+      return interaction.reply({ embeds: [embeds.info('Filtered Words', `\`${s.words.join('`, `')}\``, client)] });
     }
     if (!word) return interaction.reply({ embeds: [embeds.error('Error', 'Provide a word.', client)] });
 
     if (action === 'add') {
-      if (serverSettings.words.includes(word)) return interaction.reply({ embeds: [embeds.error('Already Added', 'Word exists.', client)] });
-      serverSettings.words.push(word);
+      if (s.words.includes(word)) return interaction.reply({ embeds: [embeds.error('Already Added', 'Word exists.', client)] });
+      s.words.push(word);
       return interaction.reply({ embeds: [embeds.success('Word Added', `Added \`${word}\`.`, client)] });
     }
     if (action === 'remove') {
-      const index = serverSettings.words.indexOf(word);
+      const index = s.words.indexOf(word);
       if (index === -1) return interaction.reply({ embeds: [embeds.error('Not Found', 'Word not found.', client)] });
-      serverSettings.words.splice(index, 1);
+      s.words.splice(index, 1);
       return interaction.reply({ embeds: [embeds.success('Word Removed', `Removed \`${word}\`.`, client)] });
     }
   }
@@ -156,105 +214,79 @@ client.on('interactionCreate', async (interaction) => {
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild) return;
 
-  if (!settings.has(message.guild.id)) settings.set(message.guild.id, { antiNsfw: false, termMessages: false, sensitivity: 0.5, words: [] });
-  const serverSettings = settings.get(message.guild.id);
+  if (!settings.has(message.guild.id)) settings.set(message.guild.id, { 
+      antiNsfw: false, nsfwPunish: 'delete', nsfwDur: '1h',
+      termMessages: false, sensitivity: 0.5, msgPunish: 'delete', msgDur: '1h', 
+      words: [] 
+  });
+  const s = settings.get(message.guild.id);
 
-  // --- PREFIX COMMANDS ---
+  // --- PREFIX: $antinsfwmessages ---
   if (message.content.startsWith('$antinsfwmessages')) {
-    const match = message.content.match(/^\$antinsfwmessages\s+(on|off)(?:\s+(?:--sensitivity|-s)\s+(0\.[1-9]))?/i);
-    if (!match) return message.reply({ embeds: [embeds.error('Invalid Syntax', 'Usage: `$antinsfwmessages <on/off> [--sensitivity 0.1-0.9]`', client)] });
+    // Regex matches: on/off, optional sensitivity, optional punishment, optional duration
+    const match = message.content.match(/^\$antinsfwmessages\s+(on|off)(?:\s+(0\.[1-9]))?(?:\s+--punishment:?(\w+))?(?:\s+--duration:?(\w+))?/i);
+    if (!match) return message.reply({ embeds: [embeds.error('Invalid Syntax', 'Usage: `$antinsfwmessages <on/off> [0.1-0.9] [--punishment:delete/mute/kick/ban] [--duration:1h]`', client)] });
 
     const state = match[1].toLowerCase();
-    const sens = match[2];
-    serverSettings.termMessages = (state === 'on');
-    
-    let sensText = `Current sensitivity: **${serverSettings.sensitivity}**`;
-    if (sens) { const parsed = parseFloat(sens); serverSettings.sensitivity = parsed; sensText = `Sensitivity set to: **${parsed}**`; }
+    if (match[2]) s.sensitivity = parseFloat(match[2]);
+    if (match[3]) s.msgPunish = match[3].toLowerCase();
+    if (match[4]) s.msgDur = match[4].toLowerCase();
+    s.termMessages = (state === 'on');
 
-    return message.reply({ embeds: [embeds.success(`Term Filter ${state.toUpperCase()}`, `Filter is ${state}.\n${sensText}`, client)] });
+    return message.reply({ embeds: [embeds.success(`Text Filter ${state.toUpperCase()}`, `Filter is **${state}**.\nSensitivity: **${s.sensitivity}**\nPunishment: **${s.msgPunish}** (${s.msgDur})`, client)] });
   }
 
-  if (message.content === '$antinsfw on') {
-    if (serverSettings.antiNsfw) return message.reply({ embeds: [embeds.error('Already Enabled', 'AntiNSFW is already on.', client)] });
-    serverSettings.antiNsfw = true;
-    return message.reply({ embeds: [embeds.success('AntiNSFW Enabled', 'Scanning media now.', client)] });
-  }
-  if (message.content === '$antinsfw off') {
-    if (!serverSettings.antiNsfw) return message.reply({ embeds: [embeds.error('Already Disabled', 'AntiNSFW is already off.', client)] });
-    serverSettings.antiNsfw = false;
-    return message.reply({ embeds: [embeds.success('AntiNSFW Disabled', 'Scanning stopped.', client)] });
+  // --- PREFIX: $antinsfw ---
+  if (message.content.startsWith('$antinsfw')) {
+    const match = message.content.match(/^\$antinsfw\s+(on|off)(?:\s+--punishment:?(\w+))?(?:\s+--duration:?(\w+))?/i);
+    if (!match) return message.reply({ embeds: [embeds.error('Invalid Syntax', 'Usage: `$antinsfw <on/off> [--punishment:delete/mute/kick/ban] [--duration:1h]`', client)] });
+
+    const state = match[1].toLowerCase();
+    if (match[2]) s.nsfwPunish = match[2].toLowerCase();
+    if (match[3]) s.nsfwDur = match[3].toLowerCase();
+    s.antiNsfw = (state === 'on');
+
+    return message.reply({ embeds: [embeds.success(`AntiNSFW ${state.toUpperCase()}`, `Scanning is **${state}**.\nPunishment: **${s.nsfwPunish}** (${s.nsfwDur})`, client)] });
   }
 
   if (message.content === '$help') {
     const helpDesc = `
 **🛡️ AntiTerm Security**
-\`/antinsfw on/off\` - AI Media Scanner
-\`/antinsfwmessages on/off [sensitivity]\` - Text Filter
-\`/antibypassfilter add/remove/list\` - Custom Words
+\`/antinsfw <on/off> [punishment]\`
+\`/antinsfwmessages <on/off> [sensitivity] [punishment]\`
+\`/antibypassfilter add/remove/list\`
 
-**Prefix Commands**
-\`$antinsfw on/off\`
-\`$antinsfwmessages on/off --sensitivity 0.1-0.9\`
-\`$antibypassfilter add/remove/list <word>\`
+**Prefix Examples**
+\`$antinsfwmessages on 0.8 --punishment:mute --duration:1h\`
+\`$antinsfw on --punishment:ban\`
     `;
     return message.reply({ embeds: [embeds.info('Help Menu', helpDesc, client)] });
   }
 
-  // --- ADVANCED TEXT FILTER LOGIC ---
-  if (serverSettings.termMessages) {
-    const rawWords = message.content.split(/ +/);
-    let violationType = null;
+  // --- TEXT FILTER EXECUTION ---
+  if (s.termMessages) {
+    let violation = false;
 
-    for (const rawWord of rawWords) {
-        const cleanWord = normalise(rawWord);
-        if (cleanWord.length < 3) continue;
+    if (s.words.some(w => checkViolation(message.content, w))) violation = true;
+    else if (EXTREME_SLURS.some(w => checkViolation(message.content, w))) violation = true;
+    else if (s.sensitivity >= 0.4 && MEDIUM_INSULTS.some(w => checkViolation(message.content, w))) violation = true;
+    else if (s.sensitivity >= 0.7 && WEB_PROFANITY_LIST.some(w => checkViolation(message.content, w))) violation = true;
 
-        // 1. Check Custom Filter
-        if (!violationType && serverSettings.words.find(b => cleanWord.includes(normalise(b)) || isCloseEnough(cleanWord, normalise(b)))) {
-            violationType = 'custom';
-        }
-
-        // 2. Check Severity Levels
-        if (!violationType) {
-            const sens = serverSettings.sensitivity;
-
-            // Extreme (0.1+)
-            if (EXTREME_SLURS.find(w => cleanWord.includes(normalise(w)) || isCloseEnough(cleanWord, normalise(w)))) {
-                violationType = 'extreme';
-            }
-            // Medium Insults (0.4+)
-            else if (sens >= 0.4 && MEDIUM_INSULTS.find(w => cleanWord.includes(normalise(w)) || isCloseEnough(cleanWord, normalise(w)))) {
-                violationType = 'severe';
-            }
-            // Web Profanity (0.7+) - THIS USES THE LIST FETCHED FROM THE WEB
-            else if (sens >= 0.7 && WEB_PROFANITY_LIST.find(w => cleanWord.includes(normalise(w)) || isCloseEnough(cleanWord, normalise(w)))) {
-                violationType = 'profanity';
-            }
-        }
-    }
-
-    if (violationType) {
+    if (violation) {
         await message.delete().catch(() => {});
         
-        if (violationType === 'extreme') {
-            try {
-                await message.member.timeout(3600000, 'Used an extreme slur.'); // 1 Hour
-                const warning = await message.channel.send({ embeds: [embeds.error('Severe Violation', `${message.author} has been muted for 1 hour.\nReason: Extreme Language.`, client)] });
-                setTimeout(() => warning.delete().catch(() => {}), 10000);
-            } catch (e) {
-                const warning = await message.channel.send({ embeds: [embeds.error('Severe Violation', `${message.author}, that word is completely banned.`, client)] });
-                setTimeout(() => warning.delete().catch(() => {}), 5000);
-            }
-        } else {
-            const warning = await message.channel.send({ embeds: [embeds.warning('Word Blocked', `${message.author}, that word is not allowed.`, client)] });
-            setTimeout(() => warning.delete().catch(() => {}), 5000);
-        }
+        // Apply the configured punishment
+        await applyPunishment(message.member, s.msgPunish, s.msgDur, 'Used a banned word.', message, client);
+
+        // Notify the channel
+        const warning = await message.channel.send({ embeds: [embeds.warning('Word Blocked', `${message.author}, that word is not allowed.\nAction: **${s.msgPunish.toUpperCase()}**`, client)] });
+        setTimeout(() => warning.delete().catch(() => {}), 5000);
         return; 
     }
   }
 
-  // --- AI IMAGE & VIDEO SCANNER ---
-  if (serverSettings.antiNsfw) {
+  // --- AI SCANNER EXECUTION ---
+  if (s.antiNsfw) {
      let mediaUrl = null;
      if (message.attachments.size > 0) mediaUrl = message.attachments.first().url;
      else if (message.embeds.length > 0) {
@@ -279,6 +311,8 @@ client.on('messageCreate', async (message) => {
          const imageBuffer = await imageResponse.arrayBuffer();
          const buffer = Buffer.from(imageBuffer);
 
+         let isUnsafe = false;
+
          if (isVideo) {
            const tempVideoPath = path.join(os.tmpdir(), `vid_${Date.now()}.mp4`);
            const framePrefix = `frame_${Date.now()}`;
@@ -292,16 +326,11 @@ client.on('messageCreate', async (message) => {
                const formData = new FormData(); formData.append('image', new Blob([frameBuffer], { type: 'image/jpeg' }), 'frame.jpg');
                const apiRes = await fetch(process.env.NSFW_API_URL + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
                const data = JSON.parse(await apiRes.text()); fs.unlinkSync(framePath);
-               if (data.safe === false || (data.scores && (data.scores.nsfw > 0.4 || data.scores.sexy > 0.4 || data.scores.hentai > 0.4 || data.scores.porn > 0.4))) {
-                 fs.unlinkSync(tempVideoPath); await message.delete().catch(() => {});
-                 const warningMsg = await message.channel.send({ embeds: [embeds.warning('NSFW Video Blocked', `${message.author}, NSFW videos are not allowed.`, client)] });
-                 setTimeout(() => warningMsg.delete().catch(() => {}), 5000); return; 
-               }
+               if (data.safe === false || (data.scores && (data.scores.nsfw > 0.4 || data.scores.sexy > 0.4 || data.scores.hentai > 0.4 || data.scores.porn > 0.4))) { isUnsafe = true; break; }
              }
-             fs.unlinkSync(tempVideoPath); return;
-           } catch (err) { if (fs.existsSync(tempVideoPath)) fs.unlinkSync(tempVideoPath); return; }
-         }
-         if (isGif) { 
+             fs.unlinkSync(tempVideoPath);
+           } catch (err) { if (fs.existsSync(tempVideoPath)) fs.unlinkSync(tempVideoPath); }
+         } else if (isGif) { 
            try {
                const frameData = await gifFrames({ url: buffer, frames: 'all', outputType: 'jpeg', cumulative: true });
                if (frameData && frameData.length > 0) {
@@ -312,26 +341,25 @@ client.on('messageCreate', async (message) => {
                      const formData = new FormData(); formData.append('image', new Blob([frameBuffer], { type: 'image/jpeg' }), `frame_${i}.jpg`);
                      const apiRes = await fetch(process.env.NSFW_API_URL + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
                      const data = JSON.parse(await apiRes.text());
-                     if (data.safe === false || (data.scores && (data.scores.nsfw > 0.4 || data.scores.sexy > 0.4 || data.scores.hentai > 0.4 || data.scores.porn > 0.4))) {
-                       await message.delete().catch(() => {});
-                       const warningMsg = await message.channel.send({ embeds: [embeds.warning('NSFW GIF Blocked', `${message.author}, NSFW GIFs are not allowed.`, client)] });
-                       setTimeout(() => warningMsg.delete().catch(() => {}), 5000); return; 
-                     }
+                     if (data.safe === false || (data.scores && (data.scores.nsfw > 0.4 || data.scores.sexy > 0.4 || data.scores.hentai > 0.4 || data.scores.porn > 0.4))) { isUnsafe = true; break; }
                    }
-                   return; 
                }
            } catch (e) {}
+         } else {
+           const blob = new Blob([imageBuffer], { type: contentType || 'image/jpeg' }); const formData = new FormData(); formData.append('image', blob, 'image.jpg');
+           const response = await fetch(process.env.NSFW_API_URL + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
+           const data = JSON.parse(await response.text());
+           if (data.safe === false || (data.flags && data.flags.length > 0) || (data.scores && ((data.scores.nsfw > 0.4) || (data.scores.sexy > 0.4) || (data.scores.hentai > 0.4) || (data.scores.porn > 0.4)))) isUnsafe = true;
          }
-         const blob = new Blob([imageBuffer], { type: contentType || 'image/jpeg' }); const formData = new FormData(); formData.append('image', blob, 'image.jpg');
-         const response = await fetch(process.env.NSFW_API_URL + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
-         const data = JSON.parse(await response.text());
-         const isUnsafeScore = data.scores && ((data.scores.nsfw > 0.4) || (data.scores.sexy > 0.4) || (data.scores.hentai > 0.4) || (data.scores.porn > 0.4));
-         if (data.safe === false || (data.flags && data.flags.length > 0) || isUnsafeScore) {
+
+         if (isUnsafe) {
            await message.delete().catch(() => {});
-           const warningMsg = await message.channel.send({ embeds: [embeds.warning('NSFW Media Blocked', `${message.author}, NSFW media is not allowed.`, client)] });
+           await applyPunishment(message.member, s.nsfwPunish, s.nsfwDur, 'Posted NSFW media.', message, client);
+           
+           const warningMsg = await message.channel.send({ embeds: [embeds.warning('NSFW Media Blocked', `${message.author}, NSFW media is not allowed.\nAction: **${s.nsfwPunish.toUpperCase()}**`, client)] });
            setTimeout(() => warningMsg.delete().catch(() => {}), 5000);
          }
-       } catch (err) {}
+       } catch (err) { console.error(err); }
      }
   }
 });
