@@ -185,7 +185,6 @@ client.on('messageCreate', async (message) => {
         const state = args[0]?.toLowerCase();
         
         const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
-        const tick = await embeds.getEmoji(client, 'success', '✅');
         
         if (state !== 'on' && state !== 'off') {
             const desc = `
@@ -219,14 +218,13 @@ ${arrow} \`$AntiNsfw on --punishment:mute --duration:1h\`
         await s.save();
 
         if (state === 'off') {
-            const desc = `${tick} **Successfully turned AntiNSFWContent OFF**`;
+            const desc = `Successfully turned **AntiNSFWContent** OFF`;
             const embed = await embeds.success('', desc, message.guild, client, 'General');
             return message.reply({ embeds: [embed] });
         }
 
-        // Success message with settings
         const desc = `
-${tick} **Successfully turned AntiNSFWContent ON**
+Successfully turned **AntiNSFWContent** ON
 
 ${arrow} **Mode:** \`${s.nsfwMode.toUpperCase()}\`
 ${arrow} **Punishment:** \`${s.nsfwPunish}\`
@@ -240,7 +238,6 @@ ${arrow} **Punishment:** \`${s.nsfwPunish}\`
         const state = args[0]?.toLowerCase();
         
         const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
-        const tick = await embeds.getEmoji(client, 'success', '✅');
 
         if (state !== 'on' && state !== 'off') {
             const desc = `
@@ -267,13 +264,13 @@ ${arrow} \`$NoNsfwText on 0.9 --punishment:mute\`
         await s.save();
 
         if (state === 'off') {
-            const desc = `${tick} **Successfully turned NoNsfwText OFF**`;
+            const desc = `Successfully turned **NoNsfwText** OFF`;
             const embed = await embeds.success('', desc, message.guild, client, 'General');
             return message.reply({ embeds: [embed] });
         }
 
         const desc = `
-${tick} **Successfully turned NoNsfwText ON**
+Successfully turned **NoNsfwText** ON
 
 ${arrow} **Sensitivity:** \`${s.sensitivity}\`
 ${arrow} **Punishment:** \`${s.msgPunish}\`
