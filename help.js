@@ -2,9 +2,9 @@ const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, TextDisp
 const embeds = require('./embeds.js');
 
 function getHelpContainer(page, client, guild, totalPages) {
-    // Fetch the custom "info" emoji from the server
-    const infoIcon = embeds.getButtonEmoji(guild, 'info', 'ℹ️');
-    const infoDisplay = infoIcon.id ? `<:${infoIcon.name}:${infoIcon.id}>` : infoIcon;
+    // Fetch the custom "info" emoji using the exact raw format for TextDisplay
+    const emojiObj = guild.emojis.cache.find(e => e.name.toLowerCase().startsWith('info'));
+    const infoDisplay = emojiObj ? `<:${emojiObj.name}:${emojiObj.id}>` : 'ℹ️';
 
     const p1 = `
 ### ${infoDisplay} Help
@@ -48,7 +48,6 @@ function getHelpContainer(page, client, guild, totalPages) {
         new ButtonBuilder().setCustomId('delete_msg').setEmoji(trashEmoji).setStyle(ButtonStyle.Danger)
     );
 
-    // NO ACCENT COLOR = transparent/standard dark theme background
     return new ContainerBuilder()
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(currentDesc))
         .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(1))
