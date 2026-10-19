@@ -45,7 +45,6 @@ function checkViolation(text, bannedWord) {
     return false;
 }
 
-// UPDATED: No more text trees here. Just clean text.
 async function sendMessage(target, type, title, fields, guild, client, s) {
     let formattedDesc = "";
     if (Array.isArray(fields)) {
@@ -55,7 +54,6 @@ async function sendMessage(target, type, title, fields, guild, client, s) {
     }
 
     if (s.useEmbeds) {
-        // embeds.js automatically adds the custom "error" or "success" emoji at the start
         const embed = await embeds[type](title, formattedDesc, guild, client);
         return target.reply({ embeds: [embed] });
     } else {
