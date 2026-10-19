@@ -45,20 +45,20 @@ function checkViolation(text, bannedWord) {
     return false;
 }
 
+// UPDATED: No more text trees here. Just clean text.
 async function sendMessage(target, type, title, fields, guild, client, s) {
     let formattedDesc = "";
     if (Array.isArray(fields)) {
-        formattedDesc = fields.map(f => `└ ${f}`).join('\n');
+        formattedDesc = fields.join('\n');
     } else {
-        formattedDesc = fields.split('\n').map(line => line.startsWith('└') ? line : `└ ${line}`).join('\n');
+        formattedDesc = fields;
     }
 
     if (s.useEmbeds) {
-        // Calls the embed builder which handles the custom emoji prefix
+        // embeds.js automatically adds the custom "error" or "success" emoji at the start
         const embed = await embeds[type](title, formattedDesc, guild, client);
         return target.reply({ embeds: [embed] });
     } else {
-        // Plain text fallback (no icons)
         return target.reply({ content: `**${title}**\n${formattedDesc}` });
     }
 }
