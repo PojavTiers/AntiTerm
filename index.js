@@ -73,21 +73,18 @@ client.on('messageCreate', async (message) => {
     }
   }
 
-  // --- IMAGE & LINK NSFW FILTER (WITH GIF FRAME EXTRACTION) ---
+  // --- IMAGE & LINK NSFW FILTER ---
   if (serverSettings.antiNsfw) {
     let mediaUrl = null;
     let isGif = false;
 
-    // 1. Check attachments
     if (message.attachments.size > 0) {
       const attachment = message.attachments.first();
       if (!attachment.contentType || attachment.contentType.startsWith('image/') || attachment.contentType.includes('gif') || attachment.contentType.includes('video/')) {
         mediaUrl = attachment.url;
         if (attachment.contentType && attachment.contentType.includes('gif')) isGif = true;
       }
-    } 
-    // 2. Check text links
-    else if (message.content.match(/https?:\/\/[^\s]+/)) {
+    } else if (message.content.match(/https?:\/\/[^\s]+/)) {
       const linkMatch = message.content.match(/https?:\/\/[^\s]+/)[0];
       if (linkMatch.includes('cdn.discordapp.com') || linkMatch.match(/\.(jpeg|jpg|gif|png|webp)/i)) {
         mediaUrl = linkMatch;
@@ -100,33 +97,23 @@ client.on('messageCreate', async (message) => {
       
       try {
         if (isGif) {
-          // --- GIF FRAME EXTRACTION LOGIC ---
           const response = await fetch(mediaUrl);
           const arrayBuffer = await response.arrayBuffer();
           const buffer = Buffer.from(arrayBuffer);
 
-          // Extract frames from the buffer
           const frameData = await gifFrames({ url: buffer, frames: 'all', outputType: 'jpeg', cumulative: true });
           
-          if (!frameData || frameData.length === 0) {
-            console.log('[TEST] No frames could be extracted from this GIF.');
-            return;
-          }
+          if (!frameData || frameData.length === 0) return;
 
-          // Sample up to 5 frames evenly across the GIF
           const totalFrames = frameData.length;
           const framesToCheck = Math.min(5, totalFrames);
           const step = Math.floor(totalFrames / framesToCheck) || 1;
           
-          console.log(`[TEST] GIF has ${totalFrames} frames. Scanning ${framesToCheck} sampled frames...`);
-
           for (let i = 0; i < framesToCheck; i++) {
             const frameIndex = i * step;
             if (frameIndex >= totalFrames) break;
 
             const frame = frameData[frameIndex];
-            
-            // Convert the frame stream into a Buffer
             const frameBuffer = await new Promise((resolve, reject) => {
               const chunks = [];
               const stream = frame.getImage();
@@ -146,21 +133,17 @@ client.on('messageCreate', async (message) => {
             });
 
             const rawText = await apiRes.text();
+            console.log(`[TEST] Frame ${i} RAW API RESPONSE:`, rawText);
             const data = JSON.parse(rawText);
-            console.log(`[TEST] Frame ${i} result:`, data.flags);
 
-            // If ANY frame is unsafe, delete the original message and stop scanning
             if (data.safe === false || (data.flags && data.flags.length > 0)) {
-              console.log(`[TEST] Unsafe content found in GIF frame ${i}. Deleting.`);
               await message.delete().catch(() => {});
               const warning = await message.channel.send(`⚠️ ${message.author}, NSFW GIFs are not allowed here.`);
               setTimeout(() => warning.delete().catch(() => {}), 5000);
-              return; // Exit early
+              return; 
             }
           }
-          console.log('[TEST] All scanned GIF frames are safe.');
         } else {
-          // --- NORMAL IMAGE/VIDEO LOGIC ---
           const imageResponse = await fetch(mediaUrl);
           const contentType = imageResponse.headers.get('content-type');
           const imageBuffer = await imageResponse.arrayBuffer();
@@ -176,6 +159,7 @@ client.on('messageCreate', async (message) => {
           });
 
           const rawText = await response.text();
+          console.log(`[TEST] IMAGE RAW API RESPONSE:`, rawText);
           const data = JSON.parse(rawText);
           
           if (data.safe === false || (data.flags && data.flags.length > 0)) {
