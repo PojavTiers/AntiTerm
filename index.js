@@ -1,4 +1,5 @@
 const { Client, GatewayIntentBits } = require('discord.js');
+const gifFrames = require('gif-frames');
 
 const client = new Client({
   intents: [
@@ -30,7 +31,7 @@ client.on('messageCreate', async (message) => {
   // --- COMMANDS ---
   if (message.content === '$antinsfw on') {
     serverSettings.antiNsfw = true;
-    return message.reply('✅ AntiNSFW is now **ON**. I will scan images, files, and links.');
+    return message.reply('✅ AntiNSFW is now **ON**. I will scan images, GIF frames, and links.');
   }
   if (message.content === '$antinsfw off') {
     serverSettings.antiNsfw = false;
@@ -72,64 +73,119 @@ client.on('messageCreate', async (message) => {
     }
   }
 
-  // --- IMAGE & LINK NSFW FILTER ---
+  // --- IMAGE & LINK NSFW FILTER (WITH GIF FRAME EXTRACTION) ---
   if (serverSettings.antiNsfw) {
-    let imageUrlToScan = null;
+    let mediaUrl = null;
+    let isGif = false;
 
-    // 1. Check if there is an attached file (image/gif)
+    // 1. Check attachments
     if (message.attachments.size > 0) {
       const attachment = message.attachments.first();
-      if (attachment.contentType && (attachment.contentType.startsWith('image/') || attachment.contentType.includes('video/') || attachment.contentType.includes('gif'))) {
-        imageUrlToScan = attachment.url;
+      if (!attachment.contentType || attachment.contentType.startsWith('image/') || attachment.contentType.includes('gif') || attachment.contentType.includes('video/')) {
+        mediaUrl = attachment.url;
+        if (attachment.contentType && attachment.contentType.includes('gif')) isGif = true;
       }
     } 
-    // 2. Check if there is a link in the text message
+    // 2. Check text links
     else if (message.content.match(/https?:\/\/[^\s]+/)) {
-      // Extract the first link found
       const linkMatch = message.content.match(/https?:\/\/[^\s]+/)[0];
-      // Only scan if it looks like an image/video link
-      if (linkMatch.match(/\.(jpeg|jpg|gif|png|mp4|webp)/i) || linkMatch.includes('cdn.discordapp.com')) {
-        imageUrlToScan = linkMatch;
+      if (linkMatch.includes('cdn.discordapp.com') || linkMatch.match(/\.(jpeg|jpg|gif|png|webp)/i)) {
+        mediaUrl = linkMatch;
+        if (linkMatch.toLowerCase().includes('.gif')) isGif = true;
       }
     }
 
-    if (imageUrlToScan) {
-      console.log(`[TEST] Scanning image from: ${imageUrlToScan}`);
+    if (mediaUrl) {
+      console.log(`[TEST] Scanning media: ${mediaUrl} | GIF: ${isGif}`);
       
       try {
-        const imageResponse = await fetch(imageUrlToScan);
-        
-        // Ensure it's actually an image file before sending to API
-        const contentType = imageResponse.headers.get('content-type');
-        if (!contentType || (!contentType.startsWith('image/') && !contentType.includes('video/'))) {
-          console.log(`[TEST] Skipped: Link is not an image/video (${contentType})`);
-          return; 
-        }
+        if (isGif) {
+          // --- GIF FRAME EXTRACTION LOGIC ---
+          const response = await fetch(mediaUrl);
+          const arrayBuffer = await response.arrayBuffer();
+          const buffer = Buffer.from(arrayBuffer);
 
-        const imageBuffer = await imageResponse.arrayBuffer();
-        const blob = new Blob([imageBuffer], { type: contentType });
+          // Extract frames from the buffer
+          const frameData = await gifFrames({ url: buffer, frames: 'all', outputType: 'jpeg', cumulative: true });
+          
+          if (!frameData || frameData.length === 0) {
+            console.log('[TEST] No frames could be extracted from this GIF.');
+            return;
+          }
 
-        const formData = new FormData();
-        formData.append('image', blob, 'image.jpg');
+          // Sample up to 5 frames evenly across the GIF
+          const totalFrames = frameData.length;
+          const framesToCheck = Math.min(5, totalFrames);
+          const step = Math.floor(totalFrames / framesToCheck) || 1;
+          
+          console.log(`[TEST] GIF has ${totalFrames} frames. Scanning ${framesToCheck} sampled frames...`);
 
-        const response = await fetch(process.env.NSFW_API_URL + '/classify', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${process.env.API_KEY}` },
-          body: formData
-        });
+          for (let i = 0; i < framesToCheck; i++) {
+            const frameIndex = i * step;
+            if (frameIndex >= totalFrames) break;
 
-        const rawText = await response.text();
-        console.log(`[TEST] API Response: ${rawText}`);
-        const data = JSON.parse(rawText);
-        
-        // If unsafe, delete message
-        if (data.safe === false || (data.flags && data.flags.length > 0)) {
-          await message.delete().catch(() => {});
-          const warning = await message.channel.send(`⚠️ ${message.author}, NSFW links/media are not allowed here.`);
-          setTimeout(() => warning.delete().catch(() => {}), 5000);
+            const frame = frameData[frameIndex];
+            
+            // Convert the frame stream into a Buffer
+            const frameBuffer = await new Promise((resolve, reject) => {
+              const chunks = [];
+              const stream = frame.getImage();
+              stream.on('data', (chunk) => chunks.push(chunk));
+              stream.on('end', () => resolve(Buffer.concat(chunks)));
+              stream.on('error', reject);
+            });
+
+            const formData = new FormData();
+            const blob = new Blob([frameBuffer], { type: 'image/jpeg' });
+            formData.append('image', blob, `frame_${i}.jpg`);
+
+            const apiRes = await fetch(process.env.NSFW_API_URL + '/classify', {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${process.env.API_KEY}` },
+              body: formData
+            });
+
+            const rawText = await apiRes.text();
+            const data = JSON.parse(rawText);
+            console.log(`[TEST] Frame ${i} result:`, data.flags);
+
+            // If ANY frame is unsafe, delete the original message and stop scanning
+            if (data.safe === false || (data.flags && data.flags.length > 0)) {
+              console.log(`[TEST] Unsafe content found in GIF frame ${i}. Deleting.`);
+              await message.delete().catch(() => {});
+              const warning = await message.channel.send(`⚠️ ${message.author}, NSFW GIFs are not allowed here.`);
+              setTimeout(() => warning.delete().catch(() => {}), 5000);
+              return; // Exit early
+            }
+          }
+          console.log('[TEST] All scanned GIF frames are safe.');
+        } else {
+          // --- NORMAL IMAGE/VIDEO LOGIC ---
+          const imageResponse = await fetch(mediaUrl);
+          const contentType = imageResponse.headers.get('content-type');
+          const imageBuffer = await imageResponse.arrayBuffer();
+          const blob = new Blob([imageBuffer], { type: contentType || 'image/jpeg' });
+
+          const formData = new FormData();
+          formData.append('image', blob, 'image.jpg');
+
+          const response = await fetch(process.env.NSFW_API_URL + '/classify', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${process.env.API_KEY}` },
+            body: formData
+          });
+
+          const rawText = await response.text();
+          const data = JSON.parse(rawText);
+          
+          if (data.safe === false || (data.flags && data.flags.length > 0)) {
+            await message.delete().catch(() => {});
+            const warning = await message.channel.send(`⚠️ ${message.author}, NSFW links/media are not allowed here.`);
+            setTimeout(() => warning.delete().catch(() => {}), 5000);
+          }
         }
       } catch (err) {
-        console.error('[TEST] Failed to scan:', err);
+        console.error('[TEST] Failed to scan media:', err);
       }
     }
   }
