@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits } = require('discord.js');
+const { Client, GatewayIntentBits, PermissionFlagsBits } = require('discord.js');
 const gifFrames = require('gif-frames');
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegPath = require('ffmpeg-static');
@@ -25,17 +25,22 @@ const client = new Client({
 const settings = new Map();
 
 // ==========================================
-// 🚨 WORD LISTS 🚨
+// 🚨 WORD LISTS & SAFE WORDS 🚨
 // ==========================================
 const EXTREME_SLURS = ['put_racial_slurs_here', 'put_extreme_slurs_here']; 
 const MEDIUM_INSULTS = ['asshole', 'bastard', 'retard', 'whore', 'slut'];
+
+// Words that trigger false positives and should NEVER be filtered by default
+const SAFE_WORDS = ['nsfw', 'sex', 'sexual', 'assume', 'assassin', 'class', 'pass', 'bass', 'grass', 'mass', 'cocktail', 'peacock', 'shitake', 'hello', 'help'];
+
 let WEB_PROFANITY_LIST = [];
 
 async function fetchWebProfanity() {
     try {
         const response = await fetch('https://raw.githubusercontent.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words/master/en');
         const text = await response.text();
-        WEB_PROFANITY_LIST = text.split('\n').map(w => w.trim().toLowerCase()).filter(w => w.length > 2);
+        // Filter out words that cause issues, and filter out short words
+        WEB_PROFANITY_LIST = text.split('\n').map(w => w.trim().toLowerCase()).filter(w => w.length > 2 && !SAFE_WORDS.includes(w));
         console.log(`[DEBUG] Downloaded ${WEB_PROFANITY_LIST.length} bad words.`);
     } catch (e) { console.error('[DEBUG] Failed to fetch profanity list:', e); }
 }
@@ -50,26 +55,44 @@ function normalise(text) {
 function isCloseEnough(input, target) {
     if (!input || !target) return false;
     if (Math.abs(input.length - target.length) > 1) return false;
-    const dist = levenshtein.get(input, target);
-    return dist <= 1; 
+    return levenshtein.get(input, target) <= 1; 
 }
 
-function checkViolation(messageContent, bannedWord) {
+// Advanced Context-Aware Violation Checker
+function checkViolation(text, bannedWord) {
     const cleanBanned = normalise(bannedWord);
-    if (!cleanBanned) return false;
+    if (!cleanBanned || cleanBanned.length < 3) return false;
+    if (SAFE_WORDS.includes(cleanBanned)) return false;
 
-    const rawWords = messageContent.split(/ +/);
-    for (const rawWord of rawWords) {
-        const cleanSingle = normalise(rawWord);
-        if (cleanSingle.length >= 3 && isCloseEnough(cleanSingle, cleanBanned)) return true;
-        if (cleanSingle === cleanBanned) return true;
+    // 1. Split text into words and check individually (No false positives here)
+    const words = text.split(/[\s,.!?]+/); 
+    for (const w of words) {
+        if (!w) continue;
+        const cleanW = normalise(w);
+        if (!cleanW) continue;
+
+        if (cleanW === cleanBanned) return true;
+        if (cleanW.length > 2 && isCloseEnough(cleanW, cleanBanned)) return true;
+        
+        // Check for repeating letters (e.g., shiiiiit -> shit)
+        const collapsed = cleanW.replace(/(.)\1{2,}/g, '$1');
+        if (collapsed === cleanBanned) return true;
     }
 
-    if (cleanBanned.length > 3) {
-        const fullClean = normalise(messageContent);
+    // 2. Check for spaced out bypass (w o r d) - only if the word is long enough (prevents "ass" matching normal text)
+    if (cleanBanned.length > 4) {
+        const fullClean = normalise(text);
         if (fullClean.includes(cleanBanned)) return true;
-        if (fullClean.replace(/(.)\1{2,}/g, '$1').includes(cleanBanned)) return true;
     }
+    return false;
+}
+
+// Authorization Checker
+function isAuthorized(member, s) {
+    if (!member) return false;
+    if (member.permissions.has(PermissionFlagsBits.Administrator)) return true;
+    if (member.id === member.guild.ownerId) return true;
+    if (s.allowedUsers && s.allowedUsers.includes(member.id)) return true;
     return false;
 }
 
@@ -99,7 +122,7 @@ async function applyPunishment(member, type, durationStr, reason, message, clien
         }
     } catch (e) {
         console.error(`Failed to ${type} user:`, e);
-        message.channel.send({ embeds: [embeds.error('Punishment Failed', `Could not ${type} the user. Check my role position and permissions!`, client)] });
+        if (message) message.channel.send({ embeds: [embeds.error('Punishment Failed', `Could not ${type} the user. Check my role position and permissions!`, client)] });
     }
 }
 
@@ -118,6 +141,7 @@ client.once('clientReady', async () => {
     {
       name: 'antinsfw',
       description: 'Configure AI NSFW image/video scanner',
+      defaultMemberPermissions: PermissionFlagsBits.Administrator,
       options: [
         { name: 'state', description: 'On or off', type: 3, required: true, choices: [{ name: 'On', value: 'on' }, { name: 'Off', value: 'off' }] },
         { name: 'punishment', description: 'What to do when NSFW is found', type: 3, required: false, choices: punishmentOptions },
@@ -127,6 +151,7 @@ client.once('clientReady', async () => {
     {
       name: 'antinsfwmessages',
       description: 'Configure text filter and sensitivity',
+      defaultMemberPermissions: PermissionFlagsBits.Administrator,
       options: [
         { name: 'state', description: 'On or off', type: 3, required: true, choices: [{ name: 'On', value: 'on' }, { name: 'Off', value: 'off' }] },
         { name: 'sensitivity', description: '0.1 (Slurs only) to 0.9 (Everything)', type: 3, required: false },
@@ -137,9 +162,19 @@ client.once('clientReady', async () => {
     {
       name: 'antibypassfilter',
       description: 'Manage custom server filter words',
+      defaultMemberPermissions: PermissionFlagsBits.Administrator,
       options: [
         { name: 'action', description: 'Add, Remove, or List', type: 3, required: true, choices: [{ name: 'Add', value: 'add' }, { name: 'Remove', value: 'remove' }, { name: 'List', value: 'list' }] },
         { name: 'word', description: 'The word', type: 3, required: false }
+      ]
+    },
+    {
+      name: 'antitermadmin',
+      description: 'Add or remove users who can configure the bot',
+      defaultMemberPermissions: PermissionFlagsBits.Administrator,
+      options: [
+        { name: 'action', description: 'Add, Remove, or List', type: 3, required: true, choices: [{ name: 'Add', value: 'add' }, { name: 'Remove', value: 'remove' }, { name: 'List', value: 'list' }] },
+        { name: 'user', description: 'The user to add/remove', type: 6, required: false } // 6 is USER type
       ]
     }
   ];
@@ -149,12 +184,18 @@ client.once('clientReady', async () => {
 
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
+  
   if (!settings.has(interaction.guild.id)) settings.set(interaction.guild.id, { 
       antiNsfw: false, nsfwPunish: 'delete', nsfwDur: '1h',
       termMessages: false, sensitivity: 0.5, msgPunish: 'delete', msgDur: '1h', 
-      words: [] 
+      words: [], allowedUsers: [] 
   });
   const s = settings.get(interaction.guild.id);
+
+  // Handled by defaultMemberPermissions natively, but double checking:
+  if (!isAuthorized(interaction.member, s)) {
+      return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
+  }
 
   if (interaction.commandName === 'antinsfw') {
     const state = interaction.options.getString('state');
@@ -213,14 +254,47 @@ client.on('interactionCreate', async (interaction) => {
       return interaction.reply({ embeds: [embeds.success('Word Removed', `Removed \`${word}\`.`, client)] });
     }
   }
+
+  if (interaction.commandName === 'antitermadmin') {
+    const action = interaction.options.getString('action');
+    const user = interaction.options.getUser('user');
+
+    if (action === 'list') {
+      if (s.allowedUsers.length === 0) return interaction.reply({ embeds: [embeds.warning('Empty', 'No extra admins configured.', client)] });
+      return interaction.reply({ embeds: [embeds.info('Authorized Users', `\`${s.allowedUsers.join('`, `')}\``, client)] });
+    }
+    if (!user) return interaction.reply({ embeds: [embeds.error('Error', 'You must mention a user.', client)] });
+
+    if (action === 'add') {
+      if (s.allowedUsers.includes(user.id)) return interaction.reply({ embeds: [embeds.error('Already Added', 'User is already authorized.', client)] });
+      s.allowedUsers.push(user.id);
+      return interaction.reply({ embeds: [embeds.success('Admin Added', `Added <@${user.id}> to authorized users.`, client)] });
+    }
+    if (action === 'remove') {
+      const index = s.allowedUsers.indexOf(user.id);
+      if (index === -1) return interaction.reply({ embeds: [embeds.error('Not Found', 'User is not in the list.', client)] });
+      s.allowedUsers.splice(index, 1);
+      return interaction.reply({ embeds: [embeds.success('Admin Removed', `Removed <@${user.id}> from authorized users.`, client)] });
+    }
+  }
 });
 
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild) return;
 
-  if (message.content.startsWith('$') || message.content.startsWith('/')) {
-      if (!settings.has(message.guild.id)) settings.set(message.guild.id, { antiNsfw: false, nsfwPunish: 'delete', nsfwDur: '1h', termMessages: false, sensitivity: 0.5, msgPunish: 'delete', msgDur: '1h', words: [] });
-      const s = settings.get(message.guild.id);
+  if (!settings.has(message.guild.id)) settings.set(message.guild.id, { 
+      antiNsfw: false, nsfwPunish: 'delete', nsfwDur: '1h',
+      termMessages: false, sensitivity: 0.5, msgPunish: 'delete', msgDur: '1h', 
+      words: [], allowedUsers: [] 
+  });
+  const s = settings.get(message.guild.id);
+
+  if (message.content.startsWith('$')) {
+      if (!isAuthorized(message.member, s)) {
+          const warning = await message.reply({ embeds: [embeds.error('Access Denied', 'Only Administrators or authorized users can use this command.', client)] });
+          setTimeout(() => warning.delete().catch(() => {}), 5000);
+          return;
+      }
       
       // --- PREFIX COMMANDS ---
       if (message.content.startsWith('$antinsfwmessages')) {
@@ -255,9 +329,11 @@ client.on('messageCreate', async (message) => {
       if (message.content === '$help') {
         const helpDesc = `
 **🛡️ AntiTerm Security**
+*(Admin Only Commands)*
 \`/antinsfw <on/off> [punishment]\`
 \`/antinsfwmessages <on/off> [sensitivity] [punishment]\`
 \`/antibypassfilter add/remove/list\`
+\`/antitermadmin add/remove/list @user\`
 
 **Prefix Examples**
 \`$antinsfwmessages on 0.8 --punishment:mute --duration:1h\`
@@ -269,17 +345,11 @@ client.on('messageCreate', async (message) => {
       return; 
   }
 
-  if (!settings.has(message.guild.id)) settings.set(message.guild.id, { 
-      antiNsfw: false, nsfwPunish: 'delete', nsfwDur: '1h',
-      termMessages: false, sensitivity: 0.5, msgPunish: 'delete', msgDur: '1h', 
-      words: [] 
-  });
-  const s = settings.get(message.guild.id);
-
   // --- TEXT FILTER EXECUTION ---
   if (s.termMessages) {
     let violation = false;
 
+    // Check Custom words, Extreme, Medium, and Web lists using our new Smart Check
     if (s.words.some(w => checkViolation(message.content, w))) violation = true;
     else if (EXTREME_SLURS.some(w => checkViolation(message.content, w))) violation = true;
     else if (s.sensitivity >= 0.4 && MEDIUM_INSULTS.some(w => checkViolation(message.content, w))) violation = true;
