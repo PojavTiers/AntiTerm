@@ -10,7 +10,7 @@ const os = require('os');
 const embeds = require('./embeds.js');
 const setActivity = require('./activity.js');
 const { connectDB, getSettings } = require('./database.js');
-const { sendMessage, isAuthorized, checkViolation, applyPunishment, EXTREME_SLURS, MEDIUM_INSULTS, SAFE_WORDS } = require('./utils.js');
+const { sendMessage, isAuthorized, checkViolation, applyPunishment, getNsfwThreshold, EXTREME_SLURS, MEDIUM_INSULTS, SAFE_WORDS } = require('./utils.js');
 const { getHelpContainer } = require('./help.js');
 const { handleConfig } = require('./config.js');
 
@@ -48,6 +48,7 @@ client.once('clientReady', async () => {
           defaultMemberPermissions: PermissionFlagsBits.Administrator,
           options: [
             { name: 'state', description: 'On or off', type: 3, required: true, choices: [{ name: 'On', value: 'on' }, { name: 'Off', value: 'off' }] },
+            { name: 'mode', description: 'Strictness level', type: 3, required: false, choices: [{ name: 'Basic', value: 'basic' }, { name: 'Moderate', value: 'moderate' }, { name: 'Advanced', value: 'advanced' }] },
             { name: 'punishment', description: 'Punishment', type: 3, required: false, choices: [{ name: 'Delete', value: 'delete' }, { name: 'Mute', value: 'mute' }, { name: 'Kick', value: 'kick' }, { name: 'Ban', value: 'ban' }] },
             { name: 'duration', description: 'Mute duration', type: 3, required: false }
           ]
@@ -85,7 +86,6 @@ client.once('clientReady', async () => {
   } catch (e) { console.error(e); }
 });
 
-// --- INTERACTION HANDLER (Slash Commands) ---
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
   if (!interaction.guild) return interaction.reply({ content: 'Servers only.', ephemeral: true });
@@ -94,17 +94,16 @@ client.on('interactionCreate', async (interaction) => {
   if (!isAuthorized(interaction.member, s)) return interaction.reply({ content: 'No permission.', ephemeral: true });
 
   if (interaction.commandName === 'config') {
-      const setting = interaction.options.getString('setting');
-      const val = interaction.options.getString('value');
-      await handleConfig(interaction, [setting, val], s, client); 
+      await handleConfig(interaction, [interaction.options.getString('setting'), interaction.options.getString('value')], s, client); 
   }
   
   if (interaction.commandName === 'antinsfwcontent') {
       s.antiNsfw = (interaction.options.getString('state') === 'on');
+      if (interaction.options.getString('mode')) s.nsfwMode = interaction.options.getString('mode');
       if (interaction.options.getString('punishment')) s.nsfwPunish = interaction.options.getString('punishment');
       if (interaction.options.getString('duration')) s.nsfwDur = interaction.options.getString('duration');
       await s.save();
-      return sendMessage(interaction, 'success', 'Updated', [`NSFW filtering is now \`${s.antiNsfw ? 'on' : 'off'}\``], interaction.guild, client, s);
+      return sendMessage(interaction, 'success', 'Updated', [`NSFW filtering is now \`${s.antiNsfw ? 'on' : 'off'}\` (Mode: \`${s.nsfwMode}\`)`], interaction.guild, client, s);
   }
 
   if (interaction.commandName === 'antinsfwmessages') {
@@ -117,7 +116,6 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-// --- MESSAGE HANDLER (Prefix Commands & Filtering) ---
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild) return;
   const s = await getSettings(message.guild.id);
@@ -131,10 +129,7 @@ client.on('messageCreate', async (message) => {
 
       if (cmd === 'help') {
         let currentPage = 1;
-        const msg = await message.reply({ 
-            components: [getHelpContainer(currentPage, client, message.guild, 2)],
-            flags: MessageFlags.IsComponentsV2 
-        });
+        const msg = await message.reply({ components: [getHelpContainer(currentPage, client, message.guild, 2)], flags: MessageFlags.IsComponentsV2 });
         const collector = msg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 60000 });
         collector.on('collect', async i => {
             if (i.user.id !== message.author.id) return i.reply({ content: "Not your menu.", ephemeral: true });
@@ -154,31 +149,48 @@ client.on('messageCreate', async (message) => {
 
       if (nsfwAliases.includes(cmd)) {
         const state = args[0]?.toLowerCase();
+        
+        // If no state provided, show info + instructions
         if (state !== 'on' && state !== 'off') {
             const title = `Filtering **NSFW Content** ${s.antiNsfw ? 'On' : 'Off'}`;
             const fields = [
-                `**Filtering:** \`${s.antiNsfw ? 'on' : 'off'}\``,
+                `**Current Mode:** \`${s.nsfwMode.toUpperCase()}\``,
                 `**Punishment:** \`${s.nsfwPunish}\`${s.nsfwPunish === 'mute' ? ` (\`${s.nsfwDur}\`)` : ''}`,
-                `**Usage:** \`$AntiNsfw <on/off> [--punishment:delete/mute/kick/ban] [--duration:1h]\``
+                `**Mode Examples:**`,
+                `> \`Basic\` - Scans for hardcore porn only. (Good for relaxed servers).`,
+                `> \`Moderate\` - Scans for porn, hentai, and explicit media. (Standard).`,
+                `> \`Advanced\` - Scans for anything suggestive: bikinis, lingerie, mild NSFW. (Strict).`,
+                `**Usage:** \`$AntiNsfw <on/off> [--mode:basic/moderate/advanced] [--punishment:delete/mute/kick/ban] [--duration:1h]\``
             ];
             return sendMessage(message, 'info', title, fields, message.guild, client, s);
         }
+        
         s.antiNsfw = (state === 'on');
+        
         const punishFlag = args.find(a => a.startsWith('--punishment'));
         if (punishFlag) s.nsfwPunish = punishFlag.split(':')[1]?.toLowerCase() || args[args.indexOf(punishFlag)+1]?.toLowerCase();
+        
         const durFlag = args.find(a => a.startsWith('--duration'));
         if (durFlag) s.nsfwDur = durFlag.split(':')[1]?.toLowerCase() || args[args.indexOf(durFlag)+1]?.toLowerCase();
+        
+        const modeFlag = args.find(a => a.startsWith('--mode'));
+        if (modeFlag) {
+            const modeVal = modeFlag.split(':')[1]?.toLowerCase() || args[args.indexOf(modeFlag)+1]?.toLowerCase();
+            if (['basic', 'moderate', 'advanced'].includes(modeVal)) s.nsfwMode = modeVal;
+        }
+
         await s.save();
 
         const title = `Filtering **NSFW Content** ${state === 'on' ? 'On' : 'Off'}`;
         const fields = [
-            `**Filtering:** \`${state}\``,
+            `**Mode:** \`${s.nsfwMode}\``,
             `**Punishment:** \`${s.nsfwPunish}\`${s.nsfwPunish === 'mute' ? ` (\`${s.nsfwDur}\`)` : ''}`
         ];
         return sendMessage(message, 'success', title, fields, message.guild, client, s);
       }
 
       if (textAliases.includes(cmd)) {
+        // (Text filter prefix logic remains the same...)
         const state = args[0]?.toLowerCase();
         if (state !== 'on' && state !== 'off') {
             const title = `Filtering **Messages** ${s.termMessages ? 'On' : 'Off'}`;
@@ -256,6 +268,9 @@ client.on('messageCreate', async (message) => {
 
   // AI SCANNER
   if (s.antiNsfw) {
+     // Dynamically get the threshold based on the chosen mode
+     const threshold = getNsfwThreshold(s.nsfwMode);
+
      let mediaUrl = null;
      if (message.attachments.size > 0) mediaUrl = message.attachments.first().url;
      else if (message.embeds.length > 0) {
@@ -295,7 +310,7 @@ client.on('messageCreate', async (message) => {
                const formData = new FormData(); formData.append('image', new Blob([frameBuffer], { type: 'image/jpeg' }), 'frame.jpg');
                const apiRes = await fetch(process.env.NSFW_API_URL + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
                const data = JSON.parse(await apiRes.text()); fs.unlinkSync(framePath);
-               if (data.safe === false || (data.scores && (data.scores.nsfw > 0.4 || data.scores.sexy > 0.4 || data.scores.hentai > 0.4 || data.scores.porn > 0.4))) { isUnsafe = true; break; }
+               if (data.safe === false || (data.scores && (data.scores.nsfw > threshold || data.scores.sexy > threshold || data.scores.hentai > threshold || data.scores.porn > threshold))) { isUnsafe = true; break; }
              }
              fs.unlinkSync(tempVideoPath);
            } catch (err) { if (fs.existsSync(tempVideoPath)) fs.unlinkSync(tempVideoPath); }
@@ -310,7 +325,7 @@ client.on('messageCreate', async (message) => {
                      const formData = new FormData(); formData.append('image', new Blob([frameBuffer], { type: 'image/jpeg' }), `frame_${i}.jpg`);
                      const apiRes = await fetch(process.env.NSFW_API_URL + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
                      const data = JSON.parse(await apiRes.text());
-                     if (data.safe === false || (data.scores && (data.scores.nsfw > 0.4 || data.scores.sexy > 0.4 || data.scores.hentai > 0.4 || data.scores.porn > 0.4))) { isUnsafe = true; break; }
+                     if (data.safe === false || (data.scores && (data.scores.nsfw > threshold || data.scores.sexy > threshold || data.scores.hentai > threshold || data.scores.porn > threshold))) { isUnsafe = true; break; }
                    }
                }
            } catch (e) {}
@@ -318,7 +333,7 @@ client.on('messageCreate', async (message) => {
            const blob = new Blob([imageBuffer], { type: contentType || 'image/jpeg' }); const formData = new FormData(); formData.append('image', blob, 'image.jpg');
            const response = await fetch(process.env.NSFW_API_URL + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
            const data = JSON.parse(await response.text());
-           if (data.safe === false || (data.flags && data.flags.length > 0) || (data.scores && ((data.scores.nsfw > 0.4) || (data.scores.sexy > 0.4) || (data.scores.hentai > 0.4) || (data.scores.porn > 0.4)))) isUnsafe = true;
+           if (data.safe === false || (data.flags && data.flags.length > 0) || (data.scores && ((data.scores.nsfw > threshold) || (data.scores.sexy > threshold) || (data.scores.hentai > threshold) || (data.scores.porn > threshold)))) isUnsafe = true;
          }
 
          if (isUnsafe) {
