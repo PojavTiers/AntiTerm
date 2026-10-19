@@ -23,9 +23,9 @@ client.once('clientReady', () => {
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild) return;
 
-  // --- FORCE LOG: This will print for EVERY image sent in the server ---
-  if (message.attachments.size > 0) {
-    console.log(`[DEBUG] An attachment was sent! AntiNSFW status is currently: ${settings.get(message.guild.id)?.antiNsfw}`);
+  // Log EVERY message that has an attachment or a link
+  if (message.attachments.size > 0 || message.content.includes('http')) {
+     console.log(`[DEBUG] Message received. Attachments: ${message.attachments.size} | Content: ${message.content}`);
   }
 
   if (!settings.has(message.guild.id)) {
@@ -86,31 +86,34 @@ client.on('messageCreate', async (message) => {
     let mediaUrl = null;
     let isGif = false;
 
+    // 1. Check for file uploads
     if (message.attachments.size > 0) {
       const attachment = message.attachments.first();
-      // Relaxed the check so it catches everything
       mediaUrl = attachment.url;
       if (attachment.contentType && attachment.contentType.includes('gif')) isGif = true;
-    } else if (message.content.match(/https?:\/\/[^\s]+/)) {
+    } 
+    // 2. Check for pasted links in the text
+    else if (message.content.match(/https?:\/\/[^\s]+/)) {
       const linkMatch = message.content.match(/https?:\/\/[^\s]+/)[0];
-      if (linkMatch.includes('cdn.discordapp.com') || linkMatch.match(/\.(jpeg|jpg|gif|png|webp)/i)) {
-        mediaUrl = linkMatch;
-        if (linkMatch.toLowerCase().includes('.gif')) isGif = true;
-      }
+      mediaUrl = linkMatch;
+      if (linkMatch.toLowerCase().includes('.gif')) isGif = true;
     }
 
     if (mediaUrl) {
-      console.log(`[DEBUG] Bot is attempting to scan: ${mediaUrl}`);
+      console.log(`[DEBUG] Bot is attempting to scan: ${mediaUrl} | isGif: ${isGif}`);
       
       try {
         if (isGif) {
-          // GIF logic remains...
+          // --- GIF LOGIC ---
           const response = await fetch(mediaUrl);
           const arrayBuffer = await response.arrayBuffer();
           const buffer = Buffer.from(arrayBuffer);
           const frameData = await gifFrames({ url: buffer, frames: 'all', outputType: 'jpeg', cumulative: true });
           
-          if (!frameData || frameData.length === 0) return;
+          if (!frameData || frameData.length === 0) {
+             console.log('[DEBUG] Failed to extract GIF frames.');
+             return;
+          }
           const totalFrames = frameData.length;
           const framesToCheck = Math.min(5, totalFrames);
           const step = Math.floor(totalFrames / framesToCheck) || 1;
@@ -137,15 +140,18 @@ client.on('messageCreate', async (message) => {
             const rawText = await apiRes.text();
             console.log(`[DEBUG] Frame ${i} RESPONSE:`, rawText);
             const data = JSON.parse(rawText);
-            if (data.safe === false || (data.flags && data.flags.length > 0)) {
+            
+            // We check the scores manually here too! 
+            if (data.safe === false || (data.flags && data.flags.length > 0) || (data.scores && (data.scores.nsfw > 0.4 || data.scores.sexy > 0.4))) {
               await message.delete().catch(() => {});
               const warning = await message.channel.send(`⚠️ ${message.author}, NSFW GIFs are not allowed here.`);
               setTimeout(() => warning.delete().catch(() => {}), 5000);
               return; 
             }
           }
+          console.log('[DEBUG] GIF scan complete. No NSFW found.');
         } else {
-          // Normal Image logic
+          // --- NORMAL IMAGE LOGIC ---
           const imageResponse = await fetch(mediaUrl);
           const contentType = imageResponse.headers.get('content-type');
           const imageBuffer = await imageResponse.arrayBuffer();
@@ -163,10 +169,16 @@ client.on('messageCreate', async (message) => {
           console.log(`[DEBUG] IMAGE RESPONSE:`, rawText);
           const data = JSON.parse(rawText);
           
-          // We are also logging the data.scores object so we can see what it thinks
-          console.log(`[DEBUG] SCORES:`, data.scores);
+          // THE FIX: We force-delete if the scores are above 0.4 (even if API says "safe")
+          const isUnsafeScore = data.scores && (
+              (data.scores.nsfw && data.scores.nsfw > 0.4) || 
+              (data.scores.sexy && data.scores.sexy > 0.4) || 
+              (data.scores.hentai && data.scores.hentai > 0.4) ||
+              (data.scores.porn && data.scores.porn > 0.4)
+          );
 
-          if (data.safe === false || (data.flags && data.flags.length > 0)) {
+          if (data.safe === false || (data.flags && data.flags.length > 0) || isUnsafeScore) {
+            console.log(`[DEBUG] Deleting image. Scores:`, data.scores);
             await message.delete().catch(() => {});
             const warning = await message.channel.send(`⚠️ ${message.author}, NSFW links/media are not allowed here.`);
             setTimeout(() => warning.delete().catch(() => {}), 5000);
