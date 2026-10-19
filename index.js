@@ -57,12 +57,22 @@ async function getSettings(guildId) {
     return s;
 }
 
-function sendMessage(target, type, title, desc, guild, client, s) {
+// --- NEW GLOBAL MESSAGE FORMATTER ---
+function sendMessage(target, type, title, fields, guild, client, s) {
+    // fields is an array of strings. We format them with the "└" tree style
+    let formattedDesc = "";
+    if (Array.isArray(fields)) {
+        formattedDesc = fields.map(f => `└ ${f}`).join('\n');
+    } else {
+        // If a string was passed instead of an array
+        formattedDesc = fields.split('\n').map(line => line.startsWith('└') ? line : `└ ${line}`).join('\n');
+    }
+
     if (s.useEmbeds) {
-        return target.reply({ embeds: [embeds[type](title, desc, guild, client)] });
+        return target.reply({ embeds: [embeds[type](title, formattedDesc, guild, client)] });
     } else {
         const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : type === 'warning' ? '⚠️' : 'ℹ️';
-        return target.reply({ content: `${icon} **${title}**\n${desc}` });
+        return target.reply({ content: `${icon} **${title}**\n${formattedDesc}` });
     }
 }
 
@@ -153,7 +163,7 @@ async function applyPunishment(member, type, durationStr, reason, message, clien
     }
 }
 
-// --- REDESIGNED HELP MENU ---
+// --- HELP MENU BUILDER ---
 function getHelpMenu(page, client, guild, totalPages) {
     const p1 = `
 **Help Commands**
@@ -179,7 +189,7 @@ function getHelpMenu(page, client, guild, totalPages) {
 └ \`$Config nsfwwarning {user} posted NSFW!\`
 
 **Need Help?**
-└ All commands require Administrator permissions.
+└ All commands require Admin permissions.
 └ Use the buttons below to navigate.
 `;
 
@@ -302,8 +312,10 @@ client.on('interactionCreate', async (interaction) => {
     await s.save();
 
     const title = `Filtering **NSFW Content** ${state === 'on' ? 'On' : 'Off'}`;
-    const desc = `- **Filtering:** \`${state}\`\n- **Punishment:** \`${s.nsfwPunish}\`${s.nsfwPunish === 'mute' ? ` (\`${s.nsfwDur}\`)` : ''}`;
-    return sendMessage(interaction, 'success', title, desc, interaction.guild, client, s);
+    return sendMessage(interaction, 'success', title, [
+        `**Filtering:** \`${state}\``,
+        `**Punishment:** \`${s.nsfwPunish}\`${s.nsfwPunish === 'mute' ? ` (\`${s.nsfwDur}\`)` : ''}`
+    ], interaction.guild, client, s);
   }
 
   if (interaction.commandName === 'antinsfwmessages') {
@@ -318,30 +330,33 @@ client.on('interactionCreate', async (interaction) => {
     await s.save();
 
     const title = `Filtering **Messages** ${state === 'on' ? 'On' : 'Off'}`;
-    const desc = `- **Filtering:** \`${state}\`\n- **Sensitivity:** \`${s.sensitivity}\`\n- **Punishment:** \`${s.msgPunish}\`${s.msgPunish === 'mute' ? ` (\`${s.msgDur}\`)` : ''}`;
-    return sendMessage(interaction, 'success', title, desc, interaction.guild, client, s);
+    return sendMessage(interaction, 'success', title, [
+        `**Filtering:** \`${state}\``,
+        `**Sensitivity:** \`${s.sensitivity}\``,
+        `**Punishment:** \`${s.msgPunish}\`${s.msgPunish === 'mute' ? ` (\`${s.msgDur}\`)` : ''}`
+    ], interaction.guild, client, s);
   }
 
   if (interaction.commandName === 'antibypassfilter') {
     const action = interaction.options.getString('action');
     const word = interaction.options.getString('word')?.toLowerCase().trim();
     if (action === 'list') {
-      if (s.words.length === 0) return sendMessage(interaction, 'warning', 'Empty', 'No custom words.', interaction.guild, client, s);
-      return sendMessage(interaction, 'info', 'Filtered Words', `\`${s.words.join('`, `')}\``, interaction.guild, client, s);
+      if (s.words.length === 0) return sendMessage(interaction, 'warning', 'Empty', ['No custom words.'], interaction.guild, client, s);
+      return sendMessage(interaction, 'info', 'Filtered Words', [`\`${s.words.join('`, `')}\``], interaction.guild, client, s);
     }
-    if (!word) return sendMessage(interaction, 'error', 'Error', 'Provide a word.', interaction.guild, client, s);
+    if (!word) return sendMessage(interaction, 'error', 'Error', ['Provide a word.'], interaction.guild, client, s);
     if (action === 'add') {
-      if (s.words.includes(word)) return sendMessage(interaction, 'error', 'Already Added', 'Word exists.', interaction.guild, client, s);
+      if (s.words.includes(word)) return sendMessage(interaction, 'error', 'Already Added', ['Word exists.'], interaction.guild, client, s);
       s.words.push(word);
       await s.save();
-      return sendMessage(interaction, 'success', 'Word Added', `Added \`${word}\`.`, interaction.guild, client, s);
+      return sendMessage(interaction, 'success', 'Word Added', [`Added \`${word}\`.`], interaction.guild, client, s);
     }
     if (action === 'remove') {
       const index = s.words.indexOf(word);
-      if (index === -1) return sendMessage(interaction, 'error', 'Not Found', 'Word not found.', interaction.guild, client, s);
+      if (index === -1) return sendMessage(interaction, 'error', 'Not Found', ['Word not found.'], interaction.guild, client, s);
       s.words.splice(index, 1);
       await s.save();
-      return sendMessage(interaction, 'success', 'Word Removed', `Removed \`${word}\`.`, interaction.guild, client, s);
+      return sendMessage(interaction, 'success', 'Word Removed', [`Removed \`${word}\`.`], interaction.guild, client, s);
     }
   }
 
@@ -350,7 +365,7 @@ client.on('interactionCreate', async (interaction) => {
     const val = interaction.options.getString('value');
 
     if (setting === 'embeds') {
-        if (val.toLowerCase() !== 'on' && val.toLowerCase() !== 'off') return sendMessage(interaction, 'error', 'Error', 'Value must be `on` or `off`.', interaction.guild, client, s);
+        if (val.toLowerCase() !== 'on' && val.toLowerCase() !== 'off') return sendMessage(interaction, 'error', 'Error', ['Value must be `on` or `off`.'], interaction.guild, client, s);
         s.useEmbeds = val.toLowerCase() === 'on';
     } else if (setting === 'nsfwwarning') {
         s.customMessages.nsfwWarning = val;
@@ -358,29 +373,29 @@ client.on('interactionCreate', async (interaction) => {
         s.customMessages.wordWarning = val;
     }
     await s.save();
-    return sendMessage(interaction, 'success', 'Config Updated', `Setting **${setting}** has been updated.`, interaction.guild, client, s);
+    return sendMessage(interaction, 'success', 'Config Updated', [`Setting **${setting}** has been updated.`], interaction.guild, client, s);
   }
 
   if (interaction.commandName === 'antitermadmin') {
     const action = interaction.options.getString('action');
     const user = interaction.options.getUser('user');
     if (action === 'list') {
-      if (s.allowedUsers.length === 0) return sendMessage(interaction, 'warning', 'Empty', 'No extra admins configured.', interaction.guild, client, s);
-      return sendMessage(interaction, 'info', 'Authorized Users', `\`${s.allowedUsers.join('`, `')}\``, interaction.guild, client, s);
+      if (s.allowedUsers.length === 0) return sendMessage(interaction, 'warning', 'Empty', ['No extra admins configured.'], interaction.guild, client, s);
+      return sendMessage(interaction, 'info', 'Authorized Users', [`\`${s.allowedUsers.join('`, `')}\``], interaction.guild, client, s);
     }
-    if (!user) return sendMessage(interaction, 'error', 'Error', 'You must mention a user.', interaction.guild, client, s);
+    if (!user) return sendMessage(interaction, 'error', 'Error', ['You must mention a user.'], interaction.guild, client, s);
     if (action === 'add') {
-      if (s.allowedUsers.includes(user.id)) return sendMessage(interaction, 'error', 'Already Added', 'User is already authorized.', interaction.guild, client, s);
+      if (s.allowedUsers.includes(user.id)) return sendMessage(interaction, 'error', 'Already Added', ['User is already authorized.'], interaction.guild, client, s);
       s.allowedUsers.push(user.id);
       await s.save();
-      return sendMessage(interaction, 'success', 'Admin Added', `Added <@${user.id}> to authorized users.`, interaction.guild, client, s);
+      return sendMessage(interaction, 'success', 'Admin Added', [`Added <@${user.id}> to authorized users.`], interaction.guild, client, s);
     }
     if (action === 'remove') {
       const index = s.allowedUsers.indexOf(user.id);
-      if (index === -1) return sendMessage(interaction, 'error', 'Not Found', 'User is not in the list.', interaction.guild, client, s);
+      if (index === -1) return sendMessage(interaction, 'error', 'Not Found', ['User is not in the list.'], interaction.guild, client, s);
       s.allowedUsers.splice(index, 1);
       await s.save();
-      return sendMessage(interaction, 'success', 'Admin Removed', `Removed <@${user.id}> from authorized users.`, interaction.guild, client, s);
+      return sendMessage(interaction, 'success', 'Admin Removed', [`Removed <@${user.id}> from authorized users.`], interaction.guild, client, s);
     }
   }
 });
@@ -393,7 +408,7 @@ client.on('messageCreate', async (message) => {
 
   if (lowerContent.startsWith('$')) {
       if (!isAuthorized(message.member, s)) {
-          const warning = await sendMessage(message, 'error', 'Access Denied', 'Only Administrators or authorized users can use this command.', message.guild, client, s);
+          const warning = await sendMessage(message, 'error', 'Access Denied', ['Only Administrators or authorized users can use this command.'], message.guild, client, s);
           setTimeout(() => warning.delete().catch(() => {}), 5000);
           return;
       }
@@ -436,20 +451,20 @@ client.on('messageCreate', async (message) => {
         const setting = args[0]?.toLowerCase();
         const val = args.slice(1).join(' ');
 
-        if (!setting || !val) return sendMessage(message, 'error', 'Error', 'Usage: `$config <embeds|nsfwwarning|wordwarning> <value>`', message.guild, client, s);
+        if (!setting || !val) return sendMessage(message, 'error', 'Error', ['Usage: `$config <embeds|nsfwwarning|wordwarning> <value>`'], message.guild, client, s);
 
         if (setting === 'embeds') {
-            if (val.toLowerCase() !== 'on' && val.toLowerCase() !== 'off') return sendMessage(message, 'error', 'Error', 'Value must be `on` or `off`.', message.guild, client, s);
+            if (val.toLowerCase() !== 'on' && val.toLowerCase() !== 'off') return sendMessage(message, 'error', 'Error', ['Value must be `on` or `off`.'], message.guild, client, s);
             s.useEmbeds = val.toLowerCase() === 'on';
         } else if (setting === 'nsfwwarning') {
             s.customMessages.nsfwWarning = val;
         } else if (setting === 'wordwarning') {
             s.customMessages.wordWarning = val;
         } else {
-            return sendMessage(message, 'error', 'Error', 'Invalid setting. Use `embeds`, `nsfwwarning`, or `wordwarning`.', message.guild, client, s);
+            return sendMessage(message, 'error', 'Error', ['Invalid setting. Use `embeds`, `nsfwwarning`, or `wordwarning`.'], message.guild, client, s);
         }
         await s.save();
-        return sendMessage(message, 'success', 'Config Updated', `Setting **${setting}** has been updated.`, message.guild, client, s);
+        return sendMessage(message, 'success', 'Config Updated', [`Setting **${setting}** has been updated.`], message.guild, client, s);
       }
 
       const nsfwAliases = ['antinsfwcontent', 'antinsfw', 'antinsfwbypass'];
@@ -459,8 +474,12 @@ client.on('messageCreate', async (message) => {
         const state = args[0]?.toLowerCase();
         if (state !== 'on' && state !== 'off') {
             const title = `Filtering **NSFW Content** ${s.antiNsfw ? 'On' : 'Off'}`;
-            const desc = `- **Filtering:** \`${s.antiNsfw ? 'on' : 'off'}\`\n- **Punishment:** \`${s.nsfwPunish}\`${s.nsfwPunish === 'mute' ? ` (\`${s.nsfwDur}\`)` : ''}\n\n**Usage:** \`$AntiNsfw <on/off> [--punishment:delete/mute/kick/ban] [--duration:1h]\``;
-            return sendMessage(message, 'info', title, desc, message.guild, client, s);
+            const fields = [
+                `**Filtering:** \`${s.antiNsfw ? 'on' : 'off'}\``,
+                `**Punishment:** \`${s.nsfwPunish}\`${s.nsfwPunish === 'mute' ? ` (\`${s.nsfwDur}\`)` : ''}`,
+                `**Usage:** \`$AntiNsfw <on/off> [--punishment:delete/mute/kick/ban] [--duration:1h]\``
+            ];
+            return sendMessage(message, 'info', title, fields, message.guild, client, s);
         }
         s.antiNsfw = (state === 'on');
         const punishFlag = args.find(a => a.startsWith('--punishment'));
@@ -470,16 +489,24 @@ client.on('messageCreate', async (message) => {
         await s.save();
 
         const title = `Filtering **NSFW Content** ${state === 'on' ? 'On' : 'Off'}`;
-        const desc = `- **Filtering:** \`${state}\`\n- **Punishment:** \`${s.nsfwPunish}\`${s.nsfwPunish === 'mute' ? ` (\`${s.nsfwDur}\`)` : ''}`;
-        return sendMessage(message, 'success', title, desc, message.guild, client, s);
+        const fields = [
+            `**Filtering:** \`${state}\``,
+            `**Punishment:** \`${s.nsfwPunish}\`${s.nsfwPunish === 'mute' ? ` (\`${s.nsfwDur}\`)` : ''}`
+        ];
+        return sendMessage(message, 'success', title, fields, message.guild, client, s);
       }
 
       if (textAliases.includes(cmd)) {
         const state = args[0]?.toLowerCase();
         if (state !== 'on' && state !== 'off') {
             const title = `Filtering **Messages** ${s.termMessages ? 'On' : 'Off'}`;
-            const desc = `- **Filtering:** \`${s.termMessages ? 'on' : 'off'}\`\n- **Sensitivity:** \`${s.sensitivity}\`\n- **Punishment:** \`${s.msgPunish}\`${s.msgPunish === 'mute' ? ` (\`${s.msgDur}\`)` : ''}\n\n**Usage:** \`$NoNsfwText <on/off> [0.1-0.9] [--punishment:delete/mute/kick/ban] [--duration:1h]\``;
-            return sendMessage(message, 'info', title, desc, message.guild, client, s);
+            const fields = [
+                `**Filtering:** \`${s.termMessages ? 'on' : 'off'}\``,
+                `**Sensitivity:** \`${s.sensitivity}\``,
+                `**Punishment:** \`${s.msgPunish}\`${s.msgPunish === 'mute' ? ` (\`${s.msgDur}\`)` : ''}`,
+                `**Usage:** \`$NoNsfwText <on/off> [0.1-0.9] [--punishment:delete/mute/kick/ban] [--duration:1h]\``
+            ];
+            return sendMessage(message, 'info', title, fields, message.guild, client, s);
         }
         s.termMessages = (state === 'on');
         const sens = parseFloat(args[1]);
@@ -491,8 +518,12 @@ client.on('messageCreate', async (message) => {
         await s.save();
 
         const title = `Filtering **Messages** ${state === 'on' ? 'On' : 'Off'}`;
-        const desc = `- **Filtering:** \`${state}\`\n- **Sensitivity:** \`${s.sensitivity}\`\n- **Punishment:** \`${s.msgPunish}\`${s.msgPunish === 'mute' ? ` (\`${s.msgDur}\`)` : ''}`;
-        return sendMessage(message, 'success', title, desc, message.guild, client, s);
+        const fields = [
+            `**Filtering:** \`${state}\``,
+            `**Sensitivity:** \`${s.sensitivity}\``,
+            `**Punishment:** \`${s.msgPunish}\`${s.msgPunish === 'mute' ? ` (\`${s.msgDur}\`)` : ''}`
+        ];
+        return sendMessage(message, 'success', title, fields, message.guild, client, s);
       }
       
       return; 
@@ -510,7 +541,10 @@ client.on('messageCreate', async (message) => {
         await applyPunishment(message.member, s.msgPunish, s.msgDur, 'Used a banned word.', message, client);
         
         const customWarning = s.customMessages.wordWarning.replace('{user}', `<@${message.author.id}>`);
-        const warning = await sendMessage(message.channel, 'warning', 'Word Blocked', `${customWarning}\nAction: **${s.msgPunish.toUpperCase()}**`, message.guild, client, s);
+        const warning = await sendMessage(message.channel, 'warning', 'Word Blocked', [
+            customWarning,
+            `**Action:** \`${s.msgPunish.toUpperCase()}\``
+        ], message.guild, client, s);
         setTimeout(() => warning.delete().catch(() => {}), 5000);
         return; 
     }
@@ -587,7 +621,10 @@ client.on('messageCreate', async (message) => {
            await applyPunishment(message.member, s.nsfwPunish, s.nsfwDur, 'Posted NSFW media.', message, client);
            
            const customWarning = s.customMessages.nsfwWarning.replace('{user}', `<@${message.author.id}>`);
-           const warningMsg = await sendMessage(message.channel, 'warning', 'NSFW Detected', `${customWarning}\nAction: **${s.nsfwPunish.toUpperCase()}**`, message.guild, client, s);
+           const warningMsg = await sendMessage(message.channel, 'warning', 'NSFW Detected', [
+               customWarning,
+               `**Action:** \`${s.nsfwPunish.toUpperCase()}\``
+           ], message.guild, client, s);
            setTimeout(() => warningMsg.delete().catch(() => {}), 5000);
          }
        } catch (err) { console.error(err); }
