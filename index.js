@@ -426,8 +426,11 @@ ${arrow} **Punishment:** \`${s.msgPunish}\`
 
          const warningText = `${warnEmoji} <@${message.author.id}> That image is not allowed on this server, flagged \`${censoredFlag}\``;
          
-         const warningMsg = await sendMessage(message.channel, 'warning', 'NSFW Detected', [warningText, `**Action:** \`${s.nsfwPunish.toUpperCase()}\``], message.guild, client, s);
-         setTimeout(() => warningMsg.delete().catch(() => {}), 5000);
+         // DIRECTLY CREATING AND SENDING THE EMBED HERE
+         const embed = await embeds.warning('', warningText, message.guild, client, 'General');
+         const warningMsg = await message.channel.send({ embeds: [embed] }).catch(e => console.error("Failed to send warning:", e));
+         
+         if (warningMsg) setTimeout(() => warningMsg.delete().catch(() => {}), 5000);
      }
   }
 });
