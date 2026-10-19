@@ -1,27 +1,28 @@
 const { EmbedBuilder } = require('discord.js');
 
+// Looks ONLY in the current server's emojis
 function getEmoji(guild, name, fallback) {
     if (!guild) return fallback;
-    const emoji = guild.emojis.cache.find(e => e.name.toLowerCase().startsWith(name.toLowerCase()));
+    const emoji = guild.emojis.cache.find(e => e.name.toLowerCase() === name.toLowerCase());
     return emoji ? `<:${emoji.name}:${emoji.id}>` : fallback;
 }
 
+// For Discord Buttons (needs the ID)
 function getButtonEmoji(guild, name, fallback) {
     if (!guild) return fallback;
-    const emoji = guild.emojis.cache.find(e => e.name.toLowerCase().startsWith(name.toLowerCase()));
+    const emoji = guild.emojis.cache.find(e => e.name.toLowerCase() === name.toLowerCase());
     return emoji ? emoji.id : fallback; 
 }
 
 function createEmbed(type, title, description, guild, client, category = 'General', page = null, totalPages = null) {
-    let color = '#5865F2'; // Default Blue
-    let icon = 'ℹ️';
+    let color = '#5865F2'; 
+    let icon = 'ℹ️'; // Default fallback
 
-    // PROFESSIONAL COLOR PALETTE
-    if (type === 'success') { color = '#57F287'; icon = getEmoji(guild, 'success', '✅'); } // Clean Green
-    if (type === 'error') { color = '#ED4245'; icon = getEmoji(guild, 'error', '❌'); } // Clean Red
-    if (type === 'warning') { color = '#FEE75C'; icon = getEmoji(guild, 'warning', '⚠️'); } // Clean Yellow
-    if (type === 'info') { color = '#3498DB'; icon = getEmoji(guild, 'info', 'ℹ️'); } // Flat UI Blue
-    if (type === 'shield') { color = '#2B2D31'; icon = getEmoji(guild, 'shield', '🛡️'); } // Stealth Dark Gray
+    if (type === 'success') { color = '#57F287'; icon = getEmoji(guild, 'success', '✅'); }
+    if (type === 'error') { color = '#ED4245'; icon = getEmoji(guild, 'error', '❌'); }
+    if (type === 'warning') { color = '#FEE75C'; icon = getEmoji(guild, 'warning', '⚠️'); }
+    if (type === 'info') { color = '#3498DB'; icon = getEmoji(guild, 'info', 'ℹ️'); }
+    if (type === 'shield') { color = '#2B2D31'; icon = getEmoji(guild, 'shield', '🛡️'); }
 
     let footerText = `AntiTerm Security | ${category}`;
     if (page && totalPages) {
@@ -43,5 +44,6 @@ module.exports = {
   warning: (title, desc, guild, client, cat) => createEmbed('warning', title, desc, guild, client, cat),
   info: (title, desc, guild, client, cat) => createEmbed('info', title, desc, guild, client, cat),
   shield: (title, desc, guild, client, cat, page, total) => createEmbed('shield', title, desc, guild, client, cat, page, total),
+  getEmoji: getEmoji,
   getButtonEmoji: getButtonEmoji
 };
