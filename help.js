@@ -1,11 +1,10 @@
 const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, TextDisplayBuilder, SeparatorBuilder } = require('discord.js');
 const embeds = require('./embeds.js');
 
-function getHelpContainer(page, client, guild, totalPages) {
-    // Fetch the exact custom emojis by name
-    const infoDisplay = embeds.getEmoji(guild, 'info', '[info]');
-    const shieldDisplay = embeds.getEmoji(guild, 'shield', '[shield]');
-    const settingsDisplay = embeds.getEmoji(guild, 'settings', '[settings]');
+async function getHelpContainer(page, client, totalPages) {
+    const infoDisplay = await embeds.getEmoji(client, 'info', '[info]');
+    const shieldDisplay = await embeds.getEmoji(client, 'shield', '[shield]');
+    const settingsDisplay = await embeds.getEmoji(client, 'settings', '[settings]');
     
     const p1 = `
 ### ${infoDisplay} AntiTerm Help
@@ -38,9 +37,9 @@ function getHelpContainer(page, client, guild, totalPages) {
 
     const currentDesc = page === 1 ? p1 : p2;
 
-    const leftEmoji = embeds.getButtonEmoji(guild, 'arrow_left', '◀');
-    const rightEmoji = embeds.getButtonEmoji(guild, 'arrow_right', '▶');
-    const trashEmoji = embeds.getButtonEmoji(guild, 'dustbin', '✖'); 
+    const leftEmoji = await embeds.getButtonEmoji(client, 'arrow_left', '◀');
+    const rightEmoji = await embeds.getButtonEmoji(client, 'arrow_right', '▶');
+    const trashEmoji = await embeds.getButtonEmoji(client, 'dustbin', '✖'); 
 
     const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('prev_page').setEmoji(leftEmoji).setStyle(ButtonStyle.Secondary).setDisabled(page === 1),
