@@ -142,18 +142,22 @@ Protect your server from specific words or bypasses.
     return embeds.shield(titles[page-1], descriptions[page-1], guild, client, categories[page-1], page, totalPages);
 }
 
-function getHelpButtons(page, totalPages) {
+function getHelpButtons(page, totalPages, guild, client) {
+    // Fetch custom emojis (or fallback to defaults)
+    const leftEmoji = embeds.getButtonEmoji(guild, 'arrow_left', '◀️');
+    const rightEmoji = embeds.getButtonEmoji(guild, 'arrow_right', '▶️');
+    const trashEmoji = embeds.getButtonEmoji(guild, 'dustbin', '🗑️'); 
+
     return new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('prev_page').setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(page === 1),
-        new ButtonBuilder().setCustomId('next_page').setEmoji('▶️').setStyle(ButtonStyle.Secondary).setDisabled(page === totalPages),
-        new ButtonBuilder().setCustomId('delete_msg').setEmoji('🗑️').setStyle(ButtonStyle.Danger)
+        new ButtonBuilder().setCustomId('prev_page').setEmoji(leftEmoji).setStyle(ButtonStyle.Secondary).setDisabled(page === 1),
+        new ButtonBuilder().setCustomId('next_page').setEmoji(rightEmoji).setStyle(ButtonStyle.Secondary).setDisabled(page === totalPages),
+        new ButtonBuilder().setCustomId('delete_msg').setEmoji(trashEmoji).setStyle(ButtonStyle.Danger)
     );
 }
 
 client.once('clientReady', async () => {
   console.log(`✅ ${client.user.tag} is online!`);
   
-  // Force bot to load all custom emojis from your server
   try {
       for (const guild of client.guilds.cache.values()) {
           await guild.emojis.fetch();
@@ -320,7 +324,7 @@ client.on('messageCreate', async (message) => {
         
         const msg = await message.reply({ 
             embeds: [getHelpMenu(currentPage, client, message.guild, totalPages)], 
-            components: [getHelpButtons(currentPage, totalPages)] 
+            components: [getHelpButtons(currentPage, totalPages, message.guild, client)] 
         });
 
         const collector = msg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 60000 });
@@ -337,7 +341,7 @@ client.on('messageCreate', async (message) => {
 
             await i.update({ 
                 embeds: [getHelpMenu(currentPage, client, message.guild, totalPages)], 
-                components: [getHelpButtons(currentPage, totalPages)] 
+                components: [getHelpButtons(currentPage, totalPages, message.guild, client)] 
             });
         });
 
