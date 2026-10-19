@@ -23,6 +23,11 @@ client.once('clientReady', () => {
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild) return;
 
+  // --- FORCE LOG: This will print for EVERY image sent in the server ---
+  if (message.attachments.size > 0) {
+    console.log(`[DEBUG] An attachment was sent! AntiNSFW status is currently: ${settings.get(message.guild.id)?.antiNsfw}`);
+  }
+
   if (!settings.has(message.guild.id)) {
     settings.set(message.guild.id, { antiNsfw: false, words: [] });
   }
@@ -31,12 +36,15 @@ client.on('messageCreate', async (message) => {
   // --- COMMANDS ---
   if (message.content === '$antinsfw on') {
     serverSettings.antiNsfw = true;
-    return message.reply('✅ AntiNSFW is now **ON**. I will scan images, GIF frames, and links.');
+    console.log(`[DEBUG] AntiNSFW turned ON for guild ${message.guild.id}`);
+    return message.reply('✅ AntiNSFW is now **ON**.');
   }
   if (message.content === '$antinsfw off') {
     serverSettings.antiNsfw = false;
+    console.log(`[DEBUG] AntiNSFW turned OFF for guild ${message.guild.id}`);
     return message.reply('❌ AntiNSFW is now **OFF**.');
   }
+  
   if (message.content.startsWith('$antibypassfilter add ')) {
     const word = message.content.slice('$antibypassfilter add '.length).toLowerCase().trim();
     if (!word) return message.reply('Usage: `$antibypassfilter add <word>`');
@@ -80,10 +88,9 @@ client.on('messageCreate', async (message) => {
 
     if (message.attachments.size > 0) {
       const attachment = message.attachments.first();
-      if (!attachment.contentType || attachment.contentType.startsWith('image/') || attachment.contentType.includes('gif') || attachment.contentType.includes('video/')) {
-        mediaUrl = attachment.url;
-        if (attachment.contentType && attachment.contentType.includes('gif')) isGif = true;
-      }
+      // Relaxed the check so it catches everything
+      mediaUrl = attachment.url;
+      if (attachment.contentType && attachment.contentType.includes('gif')) isGif = true;
     } else if (message.content.match(/https?:\/\/[^\s]+/)) {
       const linkMatch = message.content.match(/https?:\/\/[^\s]+/)[0];
       if (linkMatch.includes('cdn.discordapp.com') || linkMatch.match(/\.(jpeg|jpg|gif|png|webp)/i)) {
@@ -93,18 +100,17 @@ client.on('messageCreate', async (message) => {
     }
 
     if (mediaUrl) {
-      console.log(`[TEST] Scanning media: ${mediaUrl} | GIF: ${isGif}`);
+      console.log(`[DEBUG] Bot is attempting to scan: ${mediaUrl}`);
       
       try {
         if (isGif) {
+          // GIF logic remains...
           const response = await fetch(mediaUrl);
           const arrayBuffer = await response.arrayBuffer();
           const buffer = Buffer.from(arrayBuffer);
-
           const frameData = await gifFrames({ url: buffer, frames: 'all', outputType: 'jpeg', cumulative: true });
           
           if (!frameData || frameData.length === 0) return;
-
           const totalFrames = frameData.length;
           const framesToCheck = Math.min(5, totalFrames);
           const step = Math.floor(totalFrames / framesToCheck) || 1;
@@ -112,7 +118,6 @@ client.on('messageCreate', async (message) => {
           for (let i = 0; i < framesToCheck; i++) {
             const frameIndex = i * step;
             if (frameIndex >= totalFrames) break;
-
             const frame = frameData[frameIndex];
             const frameBuffer = await new Promise((resolve, reject) => {
               const chunks = [];
@@ -121,21 +126,17 @@ client.on('messageCreate', async (message) => {
               stream.on('end', () => resolve(Buffer.concat(chunks)));
               stream.on('error', reject);
             });
-
             const formData = new FormData();
             const blob = new Blob([frameBuffer], { type: 'image/jpeg' });
             formData.append('image', blob, `frame_${i}.jpg`);
-
             const apiRes = await fetch(process.env.NSFW_API_URL + '/classify', {
               method: 'POST',
               headers: { 'Authorization': `Bearer ${process.env.API_KEY}` },
               body: formData
             });
-
             const rawText = await apiRes.text();
-            console.log(`[TEST] Frame ${i} RAW API RESPONSE:`, rawText);
+            console.log(`[DEBUG] Frame ${i} RESPONSE:`, rawText);
             const data = JSON.parse(rawText);
-
             if (data.safe === false || (data.flags && data.flags.length > 0)) {
               await message.delete().catch(() => {});
               const warning = await message.channel.send(`⚠️ ${message.author}, NSFW GIFs are not allowed here.`);
@@ -144,11 +145,11 @@ client.on('messageCreate', async (message) => {
             }
           }
         } else {
+          // Normal Image logic
           const imageResponse = await fetch(mediaUrl);
           const contentType = imageResponse.headers.get('content-type');
           const imageBuffer = await imageResponse.arrayBuffer();
           const blob = new Blob([imageBuffer], { type: contentType || 'image/jpeg' });
-
           const formData = new FormData();
           formData.append('image', blob, 'image.jpg');
 
@@ -159,9 +160,12 @@ client.on('messageCreate', async (message) => {
           });
 
           const rawText = await response.text();
-          console.log(`[TEST] IMAGE RAW API RESPONSE:`, rawText);
+          console.log(`[DEBUG] IMAGE RESPONSE:`, rawText);
           const data = JSON.parse(rawText);
           
+          // We are also logging the data.scores object so we can see what it thinks
+          console.log(`[DEBUG] SCORES:`, data.scores);
+
           if (data.safe === false || (data.flags && data.flags.length > 0)) {
             await message.delete().catch(() => {});
             const warning = await message.channel.send(`⚠️ ${message.author}, NSFW links/media are not allowed here.`);
@@ -169,7 +173,7 @@ client.on('messageCreate', async (message) => {
           }
         }
       } catch (err) {
-        console.error('[TEST] Failed to scan media:', err);
+        console.error('[DEBUG] Failed to scan media:', err);
       }
     }
   }
