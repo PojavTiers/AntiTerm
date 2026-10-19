@@ -11,6 +11,7 @@
     "ffmpeg-static": "^5.2.0",
     "ffprobe-static": "^3.1.0",
     "fluent-ffmpeg": "^2.1.2",
-    "fast-levenshtein": "^3.0.0"
+    "fast-levenshtein": "^3.0.0",
+    "mongoose": "^8.0.0"
   }
 }
