@@ -9,39 +9,46 @@ const EXTREME_SLURS = ['put_racial_slurs_here', 'put_extreme_slurs_here'];
 const MEDIUM_INSULTS = ['asshole', 'bastard', 'retard', 'whore', 'slut'];
 const SAFE_WORDS = ['nsfw', 'sex', 'sexual', 'assume', 'assassin', 'class', 'pass', 'bass', 'grass', 'mass', 'cocktail', 'peacock', 'shitake', 'hello', 'help'];
 
+// Normalises text: makes it lowercase, removes invisible characters, converts leetspeak, and removes ALL numbers/symbols.
 function normalise(text) {
   return text.toLowerCase().normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g, '')
-    .replace(/0/g, 'o').replace(/1/g, 'i').replace(/3/g, 'e').replace(/4/g, 'a').replace(/5/g, 's').replace(/7/g, 't').replace(/@/g, 'a').replace(/\$/g, 's').replace(/[^a-z]/g, '');
+    .replace(/0/g, 'o').replace(/1/g, 'i').replace(/3/g, 'e').replace(/4/g, 'a').replace(/5/g, 's').replace(/7/g, 't').replace(/@/g, 'a').replace(/\$/g, 's')
+    .replace(/[^a-z]/g, ''); // Strips EVERYTHING that isn't a letter
 }
 
+// Checks if two words are similar (Levenshtein distance)
 function isCloseEnough(input, target) {
     if (!input || !target) return false;
     if (Math.abs(input.length - target.length) > 1) return false;
     return levenshtein.get(input, target) <= 1; 
 }
 
+// The ultimate bypass-proof checker
 function checkViolation(text, bannedWord) {
     const cleanBanned = normalise(bannedWord);
     if (!cleanBanned || cleanBanned.length < 3) return false;
     if (SAFE_WORDS.includes(cleanBanned)) return false;
 
+    // 1. Clean the entire message
+    const fullCleanText = normalise(text);
+
+    // 2. Check if the banned word exists ANYWHERE in the clean text (catches word1234, w0rd, W.O.R.D)
+    if (fullCleanText.includes(cleanBanned)) return true;
+
+    // 3. Check for repeating letters (e.g., shiiiiit)
+    const collapsedText = fullCleanText.replace(/(.)\1{2,}/g, '$1');
+    if (collapsedText.includes(cleanBanned)) return true;
+
+    // 4. Fallback: check word-by-word for typos (e.g., wrd)
     const words = text.split(/[\s,.!?]+/); 
     for (const w of words) {
         if (!w) continue;
         const cleanW = normalise(w);
         if (!cleanW) continue;
-
-        if (cleanW === cleanBanned) return true;
-        if (cleanW.length > 2 && isCloseEnough(cleanW, cleanBanned)) return true;
         
-        const collapsed = cleanW.replace(/(.)\1{2,}/g, '$1');
-        if (collapsed === cleanBanned) return true;
+        if (cleanW.length > 2 && isCloseEnough(cleanW, cleanBanned)) return true;
     }
 
-    if (cleanBanned.length > 4) {
-        const fullClean = normalise(text);
-        if (fullClean.includes(cleanBanned)) return true;
-    }
     return false;
 }
 
@@ -54,7 +61,6 @@ async function sendMessage(target, type, title, fields, guild, client, s) {
     }
 
     if (s.useEmbeds) {
-        // FIXED: correctly passing client to the embed builder
         const embed = await embeds[type](title, formattedDesc, guild, client);
         return target.reply({ embeds: [embed] });
     } else {
