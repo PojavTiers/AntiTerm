@@ -35,6 +35,31 @@ async function fetchWebProfanity() {
     } catch (e) { console.error('[DEBUG] Failed to fetch profanity list:', e); }
 }
 
+// Helper to get the highest scoring flag
+function getTopFlag(scores) {
+    if (!scores) return "nsfw";
+    const flags = ['porn', 'hentai', 'sexy', 'nsfw'];
+    let highest = "nsfw";
+    let maxScore = 0;
+
+    for (const flag of flags) {
+        if (scores[flag] && scores[flag] > maxScore) {
+            maxScore = scores[flag];
+            highest = flag;
+        }
+    }
+    return highest;
+}
+
+// Helper to censor words
+function censorWord(word) {
+    if (word === 'porn') return 'p*rn';
+    if (word === 'hentai') return 'h*ntai';
+    if (word === 'sexy') return 's*xy';
+    if (word === 'nsfw') return 'nsfw';
+    return word;
+}
+
 client.once('clientReady', async () => {
   console.log(`✅ ${client.user.tag} is online!`);
   setActivity(client);
@@ -164,7 +189,6 @@ client.on('messageCreate', async (message) => {
         
         const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
         
-        // If no state provided, show info
         if (state !== 'on' && state !== 'off') {
             const desc = `
 ${arrow} **Mode:** \`${s.nsfwMode.toUpperCase()}\`
@@ -177,7 +201,6 @@ ${arrow} \`$AntiNsfw on --punishment:mute --duration:1h\`
             return message.reply({ embeds: [embed] });
         }
         
-        // Check if already on/off
         if (state === 'on' && s.antiNsfw) return sendMessage(message, 'error', 'Already Enabled', ['NSFW filtering is already **ON**.'], message.guild, client, s);
         if (state === 'off' && !s.antiNsfw) return sendMessage(message, 'error', 'Already Disabled', ['NSFW filtering is already **OFF**.'], message.guild, client, s);
 
@@ -197,7 +220,6 @@ ${arrow} \`$AntiNsfw on --punishment:mute --duration:1h\`
 
         await s.save();
 
-        // NEW LOGIC: If it's off, send simple message. If it's on, show details.
         if (state === 'off') {
             const embed = await embeds.success('', `Turned **OFF** NSFW AI filtering`, message.guild, client, 'General');
             return message.reply({ embeds: [embed] });
@@ -241,7 +263,6 @@ ${arrow} \`$NoNsfwText on 0.9 --punishment:mute\`
         if (durFlag) s.msgDur = durFlag.split(':')[1]?.toLowerCase() || args[args.indexOf(durFlag)+1]?.toLowerCase();
         await s.save();
 
-        // NEW LOGIC: If it's off, send simple message.
         if (state === 'off') {
             const embed = await embeds.success('', `Turned **OFF** Text Filtering`, message.guild, client, 'General');
             return message.reply({ embeds: [embed] });
@@ -308,6 +329,7 @@ ${arrow} **Punishment:** \`${s.msgPunish}\`
   if (s.antiNsfw) {
      const threshold = getNsfwThreshold(s.nsfwMode);
      let isUnsafe = false;
+     let detectedFlag = "nsfw"; // Default
      let mediaUrls = []; 
 
      if (message.embeds.length > 0) {
@@ -358,6 +380,7 @@ ${arrow} **Punishment:** \`${s.msgPunish}\`
                      const data = JSON.parse(await apiRes.text());
                      if (data.safe === false || (data.scores && (data.scores.nsfw > threshold || data.scores.sexy > threshold || data.scores.hentai > threshold || data.scores.porn > threshold))) {
                          isUnsafe = true;
+                         detectedFlag = getTopFlag(data.scores);
                      }
                  }
              } else if (isGif) { 
@@ -371,7 +394,11 @@ ${arrow} **Punishment:** \`${s.msgPunish}\`
                              const formData = new FormData(); formData.append('image', new Blob([frameBuffer], { type: 'image/jpeg' }), `frame_${i}.jpg`);
                              const apiRes = await fetch(process.env.NSFW_API_URL + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
                              const data = JSON.parse(await apiRes.text());
-                             if (data.safe === false || (data.scores && (data.scores.nsfw > threshold || data.scores.sexy > threshold || data.scores.hentai > threshold || data.scores.porn > threshold))) { isUnsafe = true; break; }
+                             if (data.safe === false || (data.scores && (data.scores.nsfw > threshold || data.scores.sexy > threshold || data.scores.hentai > threshold || data.scores.porn > threshold))) { 
+                                 isUnsafe = true; 
+                                 detectedFlag = getTopFlag(data.scores);
+                                 break; 
+                             }
                          }
                      }
                  } catch (e) {}
@@ -379,7 +406,10 @@ ${arrow} **Punishment:** \`${s.msgPunish}\`
                  const blob = new Blob([imageBuffer], { type: contentType || 'image/jpeg' }); const formData = new FormData(); formData.append('image', blob, 'image.jpg');
                  const response = await fetch(process.env.NSFW_API_URL + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
                  const data = JSON.parse(await response.text());
-                 if (data.safe === false || (data.flags && data.flags.length > 0) || (data.scores && ((data.scores.nsfw > threshold) || (data.scores.sexy > threshold) || (data.scores.hentai > threshold) || (data.scores.porn > threshold)))) isUnsafe = true;
+                 if (data.safe === false || (data.flags && data.flags.length > 0) || (data.scores && ((data.scores.nsfw > threshold) || (data.scores.sexy > threshold) || (data.scores.hentai > threshold) || (data.scores.porn > threshold)))) {
+                     isUnsafe = true;
+                     detectedFlag = getTopFlag(data.scores);
+                 }
              }
          } catch (err) { console.error(err); }
      }
@@ -388,8 +418,16 @@ ${arrow} **Punishment:** \`${s.msgPunish}\`
          await message.delete().catch(() => {});
          await applyPunishment(message.member, s.nsfwPunish, s.nsfwDur, 'Posted NSFW media.', message, client);
          
-         const customWarning = s.customMessages.nsfwWarning.replace('{user}', `<@${message.author.id}>`);
-         const warningMsg = await sendMessage(message.channel, 'warning', 'NSFW Detected', [customWarning, `**Action:** \`${s.nsfwPunish.toUpperCase()}\``], message.guild, client, s);
+         // Censor the flag
+         const censoredFlag = censorWord(detectedFlag);
+
+         // Get warning emoji
+         const warnEmoji = await embeds.getEmoji(client, 'warning', '⚠️');
+
+         // Format the warning message with the specific flag
+         const warningText = `${warnEmoji} <@${message.author.id}> That image is not allowed on this server, flagged \`${censoredFlag}\``;
+         
+         const warningMsg = await sendMessage(message.channel, 'warning', 'NSFW Detected', [warningText, `**Action:** \`${s.nsfwPunish.toUpperCase()}\``], message.guild, client, s);
          setTimeout(() => warningMsg.delete().catch(() => {}), 5000);
      }
   }
