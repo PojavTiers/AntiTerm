@@ -35,13 +35,11 @@ async function fetchWebProfanity() {
     } catch (e) { console.error('[DEBUG] Failed to fetch profanity list:', e); }
 }
 
-// Helper to get the highest scoring flag
 function getTopFlag(scores) {
     if (!scores) return "nsfw";
     const flags = ['porn', 'hentai', 'sexy', 'nsfw'];
     let highest = "nsfw";
     let maxScore = 0;
-
     for (const flag of flags) {
         if (scores[flag] && scores[flag] > maxScore) {
             maxScore = scores[flag];
@@ -51,7 +49,6 @@ function getTopFlag(scores) {
     return highest;
 }
 
-// Helper to censor words
 function censorWord(word) {
     if (word === 'porn') return 'p*rn';
     if (word === 'hentai') return 'h*ntai';
@@ -188,6 +185,7 @@ client.on('messageCreate', async (message) => {
         const state = args[0]?.toLowerCase();
         
         const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
+        const tick = await embeds.getEmoji(client, 'success', '✅');
         
         if (state !== 'on' && state !== 'off') {
             const desc = `
@@ -221,15 +219,19 @@ ${arrow} \`$AntiNsfw on --punishment:mute --duration:1h\`
         await s.save();
 
         if (state === 'off') {
-            const embed = await embeds.success('', `Turned **OFF** NSFW AI filtering`, message.guild, client, 'General');
+            const desc = `${tick} **Successfully turned AntiNSFWContent OFF**`;
+            const embed = await embeds.success('', desc, message.guild, client, 'General');
             return message.reply({ embeds: [embed] });
         }
 
-        const successDesc = `
+        // Success message with settings
+        const desc = `
+${tick} **Successfully turned AntiNSFWContent ON**
+
 ${arrow} **Mode:** \`${s.nsfwMode.toUpperCase()}\`
 ${arrow} **Punishment:** \`${s.nsfwPunish}\`
         `;
-        const embed = await embeds.success('', successDesc, message.guild, client, 'General');
+        const embed = await embeds.success('', desc, message.guild, client, 'General');
         return message.reply({ embeds: [embed] });
       }
 
@@ -238,6 +240,7 @@ ${arrow} **Punishment:** \`${s.nsfwPunish}\`
         const state = args[0]?.toLowerCase();
         
         const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
+        const tick = await embeds.getEmoji(client, 'success', '✅');
 
         if (state !== 'on' && state !== 'off') {
             const desc = `
@@ -264,15 +267,18 @@ ${arrow} \`$NoNsfwText on 0.9 --punishment:mute\`
         await s.save();
 
         if (state === 'off') {
-            const embed = await embeds.success('', `Turned **OFF** Text Filtering`, message.guild, client, 'General');
+            const desc = `${tick} **Successfully turned NoNsfwText OFF**`;
+            const embed = await embeds.success('', desc, message.guild, client, 'General');
             return message.reply({ embeds: [embed] });
         }
 
-        const successDesc = `
+        const desc = `
+${tick} **Successfully turned NoNsfwText ON**
+
 ${arrow} **Sensitivity:** \`${s.sensitivity}\`
 ${arrow} **Punishment:** \`${s.msgPunish}\`
         `;
-        const embed = await embeds.success('', successDesc, message.guild, client, 'General');
+        const embed = await embeds.success('', desc, message.guild, client, 'General');
         return message.reply({ embeds: [embed] });
       }
 
@@ -329,7 +335,7 @@ ${arrow} **Punishment:** \`${s.msgPunish}\`
   if (s.antiNsfw) {
      const threshold = getNsfwThreshold(s.nsfwMode);
      let isUnsafe = false;
-     let detectedFlag = "nsfw"; // Default
+     let detectedFlag = "nsfw";
      let mediaUrls = []; 
 
      if (message.embeds.length > 0) {
@@ -418,13 +424,9 @@ ${arrow} **Punishment:** \`${s.msgPunish}\`
          await message.delete().catch(() => {});
          await applyPunishment(message.member, s.nsfwPunish, s.nsfwDur, 'Posted NSFW media.', message, client);
          
-         // Censor the flag
          const censoredFlag = censorWord(detectedFlag);
-
-         // Get warning emoji
          const warnEmoji = await embeds.getEmoji(client, 'warning', '⚠️');
 
-         // Format the warning message with the specific flag
          const warningText = `${warnEmoji} <@${message.author.id}> That image is not allowed on this server, flagged \`${censoredFlag}\``;
          
          const warningMsg = await sendMessage(message.channel, 'warning', 'NSFW Detected', [warningText, `**Action:** \`${s.nsfwPunish.toUpperCase()}\``], message.guild, client, s);
@@ -435,5 +437,5 @@ ${arrow} **Punishment:** \`${s.msgPunish}\`
 
 // Start Bot
 connectDB().then(() => {
-    client.login(process.env.DISCORD_TOKEN);
+    client.login(DISCORD_TOKEN);
 });
