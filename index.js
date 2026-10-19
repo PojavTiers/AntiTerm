@@ -35,6 +35,31 @@ async function fetchWebProfanity() {
     } catch (e) { console.error('[DEBUG] Failed to fetch profanity list:', e); }
 }
 
+// Helper to scan a single image URL
+async function scanImageUrl(url, threshold) {
+    try {
+        const res = await fetch(url);
+        const buffer = await res.arrayBuffer();
+        const formData = new FormData();
+        formData.append('image', new Blob([buffer], { type: res.headers.get('content-type') || 'image/jpeg' }), 'image.jpg');
+        
+        const apiRes = await fetch(process.env.NSFW_API_URL + '/classify', { 
+            method: 'POST', 
+            headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, 
+            body: formData 
+        });
+        const data = JSON.parse(await apiRes.text());
+        
+        if (data.safe === false || (data.flags && data.flags.length > 0) || (data.scores && (
+            data.scores.nsfw > threshold || data.scores.sexy > threshold || 
+            data.scores.hentai > threshold || data.scores.porn > threshold
+        ))) {
+            return true; // Unsafe
+        }
+        return false; // Safe
+    } catch (e) { return false; }
+}
+
 client.once('clientReady', async () => {
   console.log(`✅ ${client.user.tag} is online!`);
   setActivity(client);
@@ -149,7 +174,6 @@ client.on('messageCreate', async (message) => {
 
       if (nsfwAliases.includes(cmd)) {
         const state = args[0]?.toLowerCase();
-        
         if (state !== 'on' && state !== 'off') {
             const title = `Filtering **NSFW Content** ${s.antiNsfw ? 'On' : 'Off'}`;
             const fields = [
@@ -163,21 +187,16 @@ client.on('messageCreate', async (message) => {
             ];
             return sendMessage(message, 'info', title, fields, message.guild, client, s);
         }
-        
         s.antiNsfw = (state === 'on');
-        
         const punishFlag = args.find(a => a.startsWith('--punishment'));
         if (punishFlag) s.nsfwPunish = punishFlag.split(':')[1]?.toLowerCase() || args[args.indexOf(punishFlag)+1]?.toLowerCase();
-        
         const durFlag = args.find(a => a.startsWith('--duration'));
         if (durFlag) s.nsfwDur = durFlag.split(':')[1]?.toLowerCase() || args[args.indexOf(durFlag)+1]?.toLowerCase();
-        
         const modeFlag = args.find(a => a.startsWith('--mode'));
         if (modeFlag) {
             const modeVal = modeFlag.split(':')[1]?.toLowerCase() || args[args.indexOf(modeFlag)+1]?.toLowerCase();
             if (['basic', 'moderate', 'advanced'].includes(modeVal)) s.nsfwMode = modeVal;
         }
-
         await s.save();
 
         const title = `Filtering **NSFW Content** ${state === 'on' ? 'On' : 'Off'}`;
@@ -246,13 +265,20 @@ client.on('messageCreate', async (message) => {
       return; 
   }
 
-  // TEXT FILTER
+  // TEXT FILTER (Now checks forwarded text too)
   if (s.termMessages) {
+    let textToScan = message.content;
+    
+    // Check forwarded text
+    if (message.messageSnapshots.size > 0) {
+        textToScan += " " + message.messageSnapshots.first().content;
+    }
+
     let violation = false;
-    if (s.words.some(w => checkViolation(message.content, w))) violation = true;
-    else if (EXTREME_SLURS.some(w => checkViolation(message.content, w))) violation = true;
-    else if (s.sensitivity >= 0.4 && MEDIUM_INSULTS.some(w => checkViolation(message.content, w))) violation = true;
-    else if (s.sensitivity >= 0.7 && WEB_PROFANITY_LIST.some(w => checkViolation(message.content, w))) violation = true;
+    if (s.words.some(w => checkViolation(textToScan, w))) violation = true;
+    else if (EXTREME_SLURS.some(w => checkViolation(textToScan, w))) violation = true;
+    else if (s.sensitivity >= 0.4 && MEDIUM_INSULTS.some(w => checkViolation(textToScan, w))) violation = true;
+    else if (s.sensitivity >= 0.7 && WEB_PROFANITY_LIST.some(w => checkViolation(textToScan, w))) violation = true;
 
     if (violation) {
         await message.delete().catch(() => {});
@@ -264,80 +290,104 @@ client.on('messageCreate', async (message) => {
     }
   }
 
-  // AI SCANNER
+  // AI SCANNER (Now checks forwards)
   if (s.antiNsfw) {
      const threshold = getNsfwThreshold(s.nsfwMode);
+     let isUnsafe = false;
+     let mediaUrls = []; // Store all potential media links
 
-     let mediaUrl = null;
-     if (message.attachments.size > 0) mediaUrl = message.attachments.first().url;
-     else if (message.embeds.length > 0) {
-       const embed = message.embeds[0];
-       if (embed.video && embed.video.url) mediaUrl = embed.video.url;
-       else if (embed.image && embed.image.url) mediaUrl = embed.image.url;
-       else if (embed.thumbnail && embed.thumbnail.url) mediaUrl = embed.thumbnail.url;
-     } else if (message.content.match(/https?:\/\/[^\s]+/)) mediaUrl = message.content.match(/https?:\/\/[^\s]+/)[0];
+     // 1. Extract from normal embeds
+     if (message.embeds.length > 0) {
+         const embed = message.embeds[0];
+         if (embed.thumbnail && embed.thumbnail.url) mediaUrls.push(embed.thumbnail.url);
+         if (embed.image && embed.image.url) mediaUrls.push(embed.image.url);
+         if (embed.video && embed.video.url) mediaUrls.push(embed.video.url);
+     }
 
-     if (mediaUrl) {
-       try {
-         let finalUrl = mediaUrl;
-         if (!finalUrl.match(/\.(jpeg|jpg|png|gif|mp4|webm)/i) && !finalUrl.includes('cdn.discordapp.com')) {
-             const webRes = await fetch(finalUrl); const html = await webRes.text();
-             const mediaMatch = html.match(/(https:\/\/[^"']+\.(?:gif|mp4|webm))/i);
-             if (mediaMatch) finalUrl = mediaMatch[0]; else return;
+     // 2. Extract from Forwarded Messages
+     if (message.messageSnapshots.size > 0) {
+         const snapshot = message.messageSnapshots.first();
+         
+         // Forwarded Attachments
+         if (snapshot.attachments.size > 0) mediaUrls.push(snapshot.attachments.first().url);
+         
+         // Forwarded Embeds
+         if (snapshot.embeds.length > 0) {
+             const embed = snapshot.embeds[0];
+             if (embed.thumbnail && embed.thumbnail.url) mediaUrls.push(embed.thumbnail.url);
+             if (embed.image && embed.image.url) mediaUrls.push(embed.image.url);
+             if (embed.video && embed.video.url) mediaUrls.push(embed.video.url);
          }
-         const isVideo = finalUrl.toLowerCase().includes('.mp4') || finalUrl.toLowerCase().includes('.webm');
-         const isGif = finalUrl.toLowerCase().includes('.gif');
-         const imageResponse = await fetch(finalUrl);
-         const contentType = imageResponse.headers.get('content-type');
-         const imageBuffer = await imageResponse.arrayBuffer();
-         const buffer = Buffer.from(imageBuffer);
+     }
 
-         let isUnsafe = false;
+     // 3. Extract from normal attachments & links
+     if (message.attachments.size > 0) mediaUrls.push(message.attachments.first().url);
+     if (message.content.match(/https?:\/\/[^\s]+/)) mediaUrls.push(message.content.match(/https?:\/\/[^\s]+/)[0]);
 
-         if (isVideo) {
-           // NEW FAST COLLAGE METHOD
-           const collageBuffer = await createVideoCollage(buffer);
-           if (collageBuffer) {
-               const formData = new FormData(); 
-               formData.append('image', new Blob([collageBuffer], { type: 'image/jpeg' }), 'collage.jpg');
-               const apiRes = await fetch(process.env.NSFW_API_URL + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
-               const data = JSON.parse(await apiRes.text());
-               if (data.safe === false || (data.scores && (data.scores.nsfw > threshold || data.scores.sexy > threshold || data.scores.hentai > threshold || data.scores.porn > threshold))) {
-                   isUnsafe = true;
-               }
-           }
-         } else if (isGif) { 
-           try {
-               const frameData = await gifFrames({ url: buffer, frames: 'all', outputType: 'jpeg', cumulative: true });
-               if (frameData && frameData.length > 0) {
-                   const totalFrames = frameData.length; const framesToCheck = Math.min(5, totalFrames); const step = Math.floor(totalFrames / framesToCheck) || 1;
-                   for (let i = 0; i < framesToCheck; i++) {
-                     const frame = frameData[i * step];
-                     const frameBuffer = await new Promise((resolve, reject) => { const chunks = []; const stream = frame.getImage(); stream.on('data', (chunk) => chunks.push(chunk)); stream.on('end', () => resolve(Buffer.concat(chunks))); stream.on('error', reject); });
-                     const formData = new FormData(); formData.append('image', new Blob([frameBuffer], { type: 'image/jpeg' }), `frame_${i}.jpg`);
+     // Scan all found URLs
+     for (let mediaUrl of mediaUrls) {
+         if (isUnsafe) break; // Stop if we already found something bad
+         
+         try {
+             let finalUrl = mediaUrl;
+             if (!finalUrl.match(/\.(jpeg|jpg|png|gif|mp4|webm)/i) && !finalUrl.includes('cdn.discordapp.com')) {
+                 const webRes = await fetch(finalUrl); const html = await webRes.text();
+                 const mediaMatch = html.match(/(https:\/\/[^"']+\.(?:gif|mp4|webm))/i);
+                 if (mediaMatch) finalUrl = mediaMatch[0]; else continue;
+             }
+             
+             const isVideo = finalUrl.toLowerCase().includes('.mp4') || finalUrl.toLowerCase().includes('.webm');
+             const isGif = finalUrl.toLowerCase().includes('.gif');
+             
+             const imageResponse = await fetch(finalUrl);
+             const contentType = imageResponse.headers.get('content-type');
+             const imageBuffer = await imageResponse.arrayBuffer();
+             const buffer = Buffer.from(imageBuffer);
+
+             if (isVideo) {
+                 const collageBuffer = await createVideoCollage(buffer);
+                 if (collageBuffer) {
+                     const formData = new FormData(); 
+                     formData.append('image', new Blob([collageBuffer], { type: 'image/jpeg' }), 'collage.jpg');
                      const apiRes = await fetch(process.env.NSFW_API_URL + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
                      const data = JSON.parse(await apiRes.text());
-                     if (data.safe === false || (data.scores && (data.scores.nsfw > threshold || data.scores.sexy > threshold || data.scores.hentai > threshold || data.scores.porn > threshold))) { isUnsafe = true; break; }
-                   }
-               }
-           } catch (e) {}
-         } else {
-           const blob = new Blob([imageBuffer], { type: contentType || 'image/jpeg' }); const formData = new FormData(); formData.append('image', blob, 'image.jpg');
-           const response = await fetch(process.env.NSFW_API_URL + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
-           const data = JSON.parse(await response.text());
-           if (data.safe === false || (data.flags && data.flags.length > 0) || (data.scores && ((data.scores.nsfw > threshold) || (data.scores.sexy > threshold) || (data.scores.hentai > threshold) || (data.scores.porn > threshold)))) isUnsafe = true;
-         }
+                     if (data.safe === false || (data.scores && (data.scores.nsfw > threshold || data.scores.sexy > threshold || data.scores.hentai > threshold || data.scores.porn > threshold))) {
+                         isUnsafe = true;
+                     }
+                 }
+             } else if (isGif) { 
+                 try {
+                     const frameData = await gifFrames({ url: buffer, frames: 'all', outputType: 'jpeg', cumulative: true });
+                     if (frameData && frameData.length > 0) {
+                         const totalFrames = frameData.length; const framesToCheck = Math.min(5, totalFrames); const step = Math.floor(totalFrames / framesToCheck) || 1;
+                         for (let i = 0; i < framesToCheck; i++) {
+                             const frame = frameData[i * step];
+                             const frameBuffer = await new Promise((resolve, reject) => { const chunks = []; const stream = frame.getImage(); stream.on('data', (chunk) => chunks.push(chunk)); stream.on('end', () => resolve(Buffer.concat(chunks))); stream.on('error', reject); });
+                             const formData = new FormData(); formData.append('image', new Blob([frameBuffer], { type: 'image/jpeg' }), `frame_${i}.jpg`);
+                             const apiRes = await fetch(process.env.NSFW_API_URL + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
+                             const data = JSON.parse(await apiRes.text());
+                             if (data.safe === false || (data.scores && (data.scores.nsfw > threshold || data.scores.sexy > threshold || data.scores.hentai > threshold || data.scores.porn > threshold))) { isUnsafe = true; break; }
+                         }
+                     }
+                 } catch (e) {}
+             } else {
+                 const blob = new Blob([imageBuffer], { type: contentType || 'image/jpeg' }); const formData = new FormData(); formData.append('image', blob, 'image.jpg');
+                 const response = await fetch(process.env.NSFW_API_URL + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
+                 const data = JSON.parse(await response.text());
+                 if (data.safe === false || (data.flags && data.flags.length > 0) || (data.scores && ((data.scores.nsfw > threshold) || (data.scores.sexy > threshold) || (data.scores.hentai > threshold) || (data.scores.porn > threshold)))) isUnsafe = true;
+             }
+         } catch (err) { console.error(err); }
+     }
 
-         if (isUnsafe) {
-           await message.delete().catch(() => {});
-           await applyPunishment(message.member, s.nsfwPunish, s.nsfwDur, 'Posted NSFW media.', message, client);
-           
-           const customWarning = s.customMessages.nsfwWarning.replace('{user}', `<@${message.author.id}>`);
-           const warningMsg = await sendMessage(message.channel, 'warning', 'NSFW Detected', [customWarning, `**Action:** \`${s.nsfwPunish.toUpperCase()}\``], message.guild, client, s);
-           setTimeout(() => warningMsg.delete().catch(() => {}), 5000);
-         }
-       } catch (err) { console.error(err); }
-    }
+     // Delete if unsafe
+     if (isUnsafe) {
+         await message.delete().catch(() => {});
+         await applyPunishment(message.member, s.nsfwPunish, s.nsfwDur, 'Posted NSFW media.', message, client);
+         
+         const customWarning = s.customMessages.nsfwWarning.replace('{user}', `<@${message.author.id}>`);
+         const warningMsg = await sendMessage(message.channel, 'warning', 'NSFW Detected', [customWarning, `**Action:** \`${s.nsfwPunish.toUpperCase()}\``], message.guild, client, s);
+         setTimeout(() => warningMsg.delete().catch(() => {}), 5000);
+     }
   }
 });
 
