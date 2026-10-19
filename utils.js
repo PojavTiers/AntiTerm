@@ -16,7 +16,11 @@ function normalise(text) {
     .replace(/[^a-z]/g, ''); // Strips EVERYTHING that isn't a letter
 }
 
-// Checks if two words are similar (Levenshtein distance)
+// NEW: Collapses repeating letters to a single letter (so "teessstt" becomes "test")
+function collapseRepeats(text) {
+    return text.replace(/(.)\1+/g, '$1');
+}
+
 function isCloseEnough(input, target) {
     if (!input || !target) return false;
     if (Math.abs(input.length - target.length) > 1) return false;
@@ -32,14 +36,14 @@ function checkViolation(text, bannedWord) {
     // 1. Clean the entire message
     const fullCleanText = normalise(text);
 
-    // 2. Check if the banned word exists ANYWHERE in the clean text (catches word1234, w0rd, W.O.R.D)
+    // 2. Check if the banned word exists ANYWHERE in the clean text
     if (fullCleanText.includes(cleanBanned)) return true;
 
-    // 3. Check for repeating letters (e.g., shiiiiit)
-    const collapsedText = fullCleanText.replace(/(.)\1{2,}/g, '$1');
+    // 3. Check if the collapsed message contains the banned word (e.g., "TEESSSTT" -> "test")
+    const collapsedText = collapseRepeats(fullCleanText);
     if (collapsedText.includes(cleanBanned)) return true;
 
-    // 4. Fallback: check word-by-word for typos (e.g., wrd)
+    // 4. Check word-by-word (catches typos like wrd)
     const words = text.split(/[\s,.!?]+/); 
     for (const w of words) {
         if (!w) continue;
