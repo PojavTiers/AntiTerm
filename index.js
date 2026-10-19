@@ -144,21 +144,29 @@ function getHelpMenu(page, client, guild, totalPages) {
 **Moderation Configuration**
 These commands require Administrator permissions.
 
-\`antinsfw on/off\` \`antinsfw punishment:\`
-\`antinsfwmessages on/off\` \`antinsfwmessages sensitivity:\`
-\`antitermadmin add/remove/list\`
+**AI Media Scanner**
+- \`AntiNsfwContent on/off\` - Toggle the NSFW scanner.
+- \`AntiNsfwContent punishment:\` - Set punishment type.
+
+**Text Filter**
+- \`AntiNsfwMessages on/off\` - Toggle the text filter.
+- \`AntiNsfwMessages Sensitivity:\` - Set strictness level (0.1-0.9).
+
+**Access Control**
+- \`AntiTermAdmin add/remove/list\` - Manage authorized bot users.
     `;
     const p2 = `
 **Custom Filtering**
 Protect your server from specific words or bypasses.
 
-\`antibypassfilter add <word>\`
-\`antibypassfilter remove <word>\`
-\`antibypassfilter list\`
+**Bypass Filter**
+- \`AntiBypassFilter add <word>\` - Add a custom word to the filter.
+- \`AntiBypassFilter remove <word>\` - Remove a custom word.
+- \`AntiBypassFilter list\` - View all custom filtered words.
 
 **Example Usage:**
 \`$antinsfwmessages on 0.8 --punishment:mute --duration:1h\`
-\`$antinsfw on --punishment:ban\`
+\`$antinsfwcontent on --punishment:ban\`
     `;
 
     const descriptions = [p1, p2];
@@ -203,7 +211,7 @@ client.once('clientReady', async () => {
 
   const commands = [
     {
-      name: 'antinsfw',
+      name: 'antinsfwcontent', // RENAMED HERE
       description: 'Configure AI NSFW image/video scanner',
       defaultMemberPermissions: PermissionFlagsBits.Administrator,
       options: [
@@ -263,7 +271,7 @@ client.on('interactionCreate', async (interaction) => {
 
   if (!isAuthorized(interaction.member, s)) return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
 
-  if (interaction.commandName === 'antinsfw') {
+  if (interaction.commandName === 'antinsfwcontent') { // RENAMED HERE
     const state = interaction.options.getString('state');
     const punish = interaction.options.getString('punishment');
     const dur = interaction.options.getString('duration');
@@ -272,7 +280,7 @@ client.on('interactionCreate', async (interaction) => {
     if (dur) s.nsfwDur = dur;
     await s.save();
 
-    const title = `Filtering **NSFW** ${state === 'on' ? 'On' : 'Off'}`;
+    const title = `Filtering **NSFW Content** ${state === 'on' ? 'On' : 'Off'}`;
     const desc = `- **Filtering:** \`${state}\`\n- **Punishment:** \`${s.nsfwPunish}\`${s.nsfwPunish === 'mute' ? ` (\`${s.nsfwDur}\`)` : ''}`;
     return interaction.reply({ embeds: [embeds.success(title, desc, interaction.guild, client)] });
   }
@@ -399,9 +407,9 @@ client.on('messageCreate', async (message) => {
         return message.reply({ embeds: [embeds.success(title, desc, message.guild, client)] });
       }
 
-      if (message.content.startsWith('$antinsfw')) {
-        const match = message.content.match(/^\$antinsfw\s+(on|off)(?:\s+--punishment:?(\w+))?(?:\s+--duration:?(\w+))?/i);
-        if (!match) return message.reply({ embeds: [embeds.error('Invalid Syntax', 'Usage: `$antinsfw <on/off> [--punishment:delete/mute/kick/ban] [--duration:1h]`', message.guild, client)] });
+      if (message.content.startsWith('$antinsfwcontent')) { // RENAMED HERE
+        const match = message.content.match(/^\$antinsfwcontent\s+(on|off)(?:\s+--punishment:?(\w+))?(?:\s+--duration:?(\w+))?/i);
+        if (!match) return message.reply({ embeds: [embeds.error('Invalid Syntax', 'Usage: `$antinsfwcontent <on/off> [--punishment:delete/mute/kick/ban] [--duration:1h]`', message.guild, client)] });
 
         const state = match[1].toLowerCase();
         if (match[2]) s.nsfwPunish = match[2].toLowerCase();
@@ -409,7 +417,7 @@ client.on('messageCreate', async (message) => {
         s.antiNsfw = (state === 'on');
         await s.save();
 
-        const title = `Filtering **NSFW** ${state === 'on' ? 'On' : 'Off'}`;
+        const title = `Filtering **NSFW Content** ${state === 'on' ? 'On' : 'Off'}`;
         const desc = `- **Filtering:** \`${state}\`\n- **Punishment:** \`${s.nsfwPunish}\`${s.nsfwPunish === 'mute' ? ` (\`${s.nsfwDur}\`)` : ''}`;
         return message.reply({ embeds: [embeds.success(title, desc, message.guild, client)] });
       }
