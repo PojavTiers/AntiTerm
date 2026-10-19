@@ -15,7 +15,6 @@ function normalise(text) {
   return text.toLowerCase().replace(/0/g, 'o').replace(/1/g, 'i').replace(/3/g, 'e').replace(/4/g, 'a').replace(/5/g, 's').replace(/7/g, 't').replace(/@/g, 'a').replace(/\$/g, 's').replace(/[^a-z]/g, '');
 }
 
-// Changed to clientReady to fix that yellow warning in your logs
 client.once('clientReady', () => {
   console.log(`✅ ${client.user.tag} is online!`);
 });
@@ -74,50 +73,40 @@ client.on('messageCreate', async (message) => {
   }
 
   // --- IMAGE NSFW FILTER ---
-  if (serverSettings.antiNsfw && message.attachments.size > 0) {
-    const attachment = message.attachments.first();
+  if (message.attachments.size > 0) {
+    console.log(`[TEST] Image detected! AntiNSFW status: ${serverSettings.antiNsfw}`);
     
-    try {
-      // 1. Download the image from Discord
-      const imageResponse = await fetch(attachment.url);
-      const imageBuffer = await imageResponse.arrayBuffer();
+    if (serverSettings.antiNsfw) {
+      const attachment = message.attachments.first();
+      console.log(`[TEST] Image URL: ${attachment.url}`);
       
-      // 2. Create form data to send to the API
-      const formData = new FormData();
-      const blob = new Blob([imageBuffer], { type: 'image/jpeg' }); 
-      
-      // Try sending it as both 'image' and 'file' just in case the API expects one or the other
-      formData.append('image', blob, 'upload.jpg'); 
-      formData.append('file', blob, 'upload.jpg'); 
+      try {
+        console.log(`[TEST] Sending request to: ${process.env.NSFW_API_URL}/classify`);
+        
+        const response = await fetch(process.env.NSFW_API_URL + '/classify', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': process.env.NSFW_API_KEY
+          },
+          body: JSON.stringify({ url: attachment.url })
+        });
 
-      // 3. Send to Railway API
-      const response = await fetch(process.env.NSFW_API_URL + '/classify', {
-        method: 'POST',
-        headers: {
-          'x-api-key': process.env.NSFW_API_KEY
-        },
-        body: formData
-      });
+        console.log(`[TEST] API Responded with status: ${response.status}`);
 
-      if (!response.ok) {
-          console.error('API Error Status:', response.status);
-          console.error('API Error Body:', await response.text());
-          return;
+        const rawText = await response.text();
+        console.log(`[TEST] API Raw Response: ${rawText}`);
+        
+        if (rawText.toLowerCase().includes('nsfw') || rawText.toLowerCase().includes('weapon')) {
+            console.log(`[TEST] Deleting image because it matched NSFW/Weapon keywords.`);
+            await message.delete().catch((err) => console.log(`[TEST] Failed to delete: ${err}`));
+            const warning = await message.channel.send(`⚠️ ${message.author}, this image is not allowed here.`);
+            setTimeout(() => warning.delete().catch(() => {}), 5000);
+        }
+
+      } catch (err) {
+        console.error('[TEST] Failed to scan image:', err);
       }
-
-      const data = await response.json();
-      console.log('--- IMAGE SCAN RESULT ---');
-      console.log(JSON.stringify(data, null, 2));
-      
-      // 4. Delete if NSFW (If ANY score is above 0.5)
-      if (data.is_nsfw === true || data.is_weapon === true || (data.nsfw_score && data.nsfw_score > 0.5)) {
-         await message.delete().catch(() => {});
-         const warning = await message.channel.send(`⚠️ ${message.author}, this image is not allowed here.`);
-         setTimeout(() => warning.delete().catch(() => {}), 5000);
-         return;
-      }
-    } catch (err) {
-      console.error('Failed to scan image:', err);
     }
   }
 });
