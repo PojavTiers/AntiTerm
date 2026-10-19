@@ -2,8 +2,12 @@ const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, TextDisp
 const embeds = require('./embeds.js');
 
 function getHelpContainer(page, client, guild, totalPages) {
+    // Fetch the custom "info" emoji from the server
+    const infoIcon = embeds.getButtonEmoji(guild, 'info', 'ℹ️');
+    const infoDisplay = infoIcon.id ? `<:${infoIcon.name}:${infoIcon.id}>` : infoIcon;
+
     const p1 = `
-### ℹ️ Help
+### ${infoDisplay} Help
 
 **Help Commands**
 ├ help
@@ -19,7 +23,7 @@ function getHelpContainer(page, client, guild, totalPages) {
 └ antinuke admin
 `;
     const p2 = `
-### ℹ️ Help
+### ${infoDisplay} Help
 
 **Command Examples**
 ├ $antinsfw on --punishment:ban
@@ -44,8 +48,8 @@ function getHelpContainer(page, client, guild, totalPages) {
         new ButtonBuilder().setCustomId('delete_msg').setEmoji(trashEmoji).setStyle(ButtonStyle.Danger)
     );
 
+    // NO ACCENT COLOR = transparent/standard dark theme background
     return new ContainerBuilder()
-        .setAccentColor(0x2B2D31)
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(currentDesc))
         .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(1))
         .addActionRowComponents(row);
