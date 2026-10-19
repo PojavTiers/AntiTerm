@@ -8,7 +8,6 @@ async function getEmoji(client, name, fallback) {
         const mainGuild = client.guilds.cache.get(MAIN_GUILD_ID);
         if (!mainGuild) return fallback;
 
-        // Strictly look inside the main server
         const emoji = mainGuild.emojis.cache.find(e => e.name.toLowerCase() === name.toLowerCase());
         
         if (emoji) {
@@ -37,7 +36,6 @@ async function createEmbed(type, title, description, client, category = 'General
     let color = '#5865F2'; 
     let icon = ''; 
 
-    // Uses exact names "success" and "error" from your server
     if (type === 'success') { color = '#57F287'; icon = await getEmoji(client, 'success', '✅'); }
     if (type === 'error') { color = '#ED4245'; icon = await getEmoji(client, 'error', '❌'); }
     if (type === 'warning') { color = '#FEE75C'; icon = await getEmoji(client, 'warning', '⚠️'); }
