@@ -5,15 +5,20 @@ const MAIN_GUILD_ID = '1500445119185293404'; // The server where your emojis liv
 async function getEmoji(client, name, fallback) {
     if (!client) return fallback;
     
-    // Find the main server in the bot's cache
-    const mainGuild = client.guilds.cache.get(MAIN_GUILD_ID);
-    if (!mainGuild) return fallback;
-
     try {
-        await mainGuild.emojis.fetch(); // Force update cache
-        const emoji = mainGuild.emojis.cache.find(e => e.name.toLowerCase() === name.toLowerCase());
-        return emoji ? `<:${emoji.name}:${emoji.id}>` : fallback;
+        // Force a fresh fetch of ALL emojis the bot can see
+        await client.guilds.cache.get(MAIN_GUILD_ID)?.emojis.fetch();
+        
+        // Find the emoji by name in the global cache
+        const emoji = client.emojis.cache.find(e => e.name.toLowerCase() === name.toLowerCase() && e.guild.id === MAIN_GUILD_ID);
+        
+        // If found, return the exact format Discord needs
+        if (emoji) {
+            return `<:${emoji.name}:${emoji.id}>`;
+        }
+        return fallback;
     } catch (e) {
+        console.error("Emoji fetch error:", e);
         return fallback;
     }
 }
@@ -21,12 +26,9 @@ async function getEmoji(client, name, fallback) {
 async function getButtonEmoji(client, name, fallback) {
     if (!client) return fallback;
     
-    const mainGuild = client.guilds.cache.get(MAIN_GUILD_ID);
-    if (!mainGuild) return fallback;
-
     try {
-        await mainGuild.emojis.fetch();
-        const emoji = mainGuild.emojis.cache.find(e => e.name.toLowerCase() === name.toLowerCase());
+        await client.guilds.cache.get(MAIN_GUILD_ID)?.emojis.fetch();
+        const emoji = client.emojis.cache.find(e => e.name.toLowerCase() === name.toLowerCase() && e.guild.id === MAIN_GUILD_ID);
         return emoji ? emoji.id : fallback; 
     } catch (e) {
         return fallback;
