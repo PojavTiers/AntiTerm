@@ -10,7 +10,7 @@ const path = require('path');
 const os = require('os');
 
 const embeds = require('./embeds.js');
-const setActivity = require('./activity.js'); // NEW: Importing activity file
+const setActivity = require('./activity.js');
 
 ffmpeg.setFfmpegPath(ffmpegPath);
 ffmpeg.setFfprobePath(ffprobePath);
@@ -153,38 +153,39 @@ async function applyPunishment(member, type, durationStr, reason, message, clien
     }
 }
 
+// --- REDESIGNED HELP MENU ---
 function getHelpMenu(page, client, guild, totalPages) {
     const p1 = `
-**Moderation Configuration**
-Requires Administrator permissions.
+**Help Commands**
+└ \`help\`
+└ \`help category\`
 
-**AI Media Scanner**
-- \`AntiNsfwContent\` / \`AntiNsfw\` (aliases)
-- \`AntiNsfwContent on/off\`
+**Moderation Commands**
+└ \`AntiNsfw\` *(alias: AntiNsfwContent)*
+└ \`NoNsfwText\` *(alias: AntiNsfwMessages)*
+└ \`Filter\` *(alias: AntiBypassFilter)*
 
-**Text Filter**
-- \`AntiNsfwMessages\` / \`NoNsfwText\` (aliases)
-- \`AntiNsfwMessages on/off\`
-
-**Custom Filter**
-- \`AntiBypassFilter\` / \`Filter\` (aliases)
-- \`Filter add/remove/list <word>\`
-    `;
+**Settings**
+└ \`Config embeds on/off\`
+└ \`Config nsfwwarning <text>\`
+└ \`Config wordwarning <text>\`
+└ \`AntiTermAdmin add/remove/list\`
+`;
     const p2 = `
-**Customization & Settings**
-- \`Config embeds on/off\` - Toggle embeds vs plain text.
-- \`Config nsfwwarning <text>\` - Change NSFW warning.
-- \`Config wordwarning <text>\` - Change word warning.
-- \`AntiTermAdmin add/remove/list\` - Bot admins.
+**Command Examples**
+└ \`$AntiNsfw on --punishment:ban\`
+└ \`$NoNsfwText on 0.8 --punishment:mute --duration:1h\`
+└ \`$Filter add badword\`
+└ \`$Config nsfwwarning {user} posted NSFW!\`
 
-**Example Usage:**
-\`$AntiNsfw on --punishment:ban\`
-\`$NoNsfwText on 0.8 --punishment:mute\`
-    `;
+**Need Help?**
+└ All commands require Administrator permissions.
+└ Use the buttons below to navigate.
+`;
 
     const descriptions = [p1, p2];
-    const titles = ['Moderation Commands', 'Settings & Configuration'];
-    const categories = ['Moderation', 'Configuration'];
+    const titles = ['Help', 'Examples & Usage'];
+    const categories = ['General', 'Configuration'];
     
     return embeds.shield(titles[page-1], descriptions[page-1], guild, client, categories[page-1], page, totalPages);
 }
@@ -203,8 +204,6 @@ function getHelpButtons(page, totalPages, guild, client) {
 
 client.once('clientReady', async () => {
   console.log(`✅ ${client.user.tag} is online!`);
-  
-  // NEW: Call the activity function
   setActivity(client);
 
   try {
@@ -592,7 +591,7 @@ client.on('messageCreate', async (message) => {
            setTimeout(() => warningMsg.delete().catch(() => {}), 5000);
          }
        } catch (err) { console.error(err); }
-     }
+    }
   }
 });
 
