@@ -143,7 +143,6 @@ Protect your server from specific words or bypasses.
 }
 
 function getHelpButtons(page, totalPages, guild, client) {
-    // Fetch custom emojis (or fallback to defaults)
     const leftEmoji = embeds.getButtonEmoji(guild, 'arrow_left', '◀️');
     const rightEmoji = embeds.getButtonEmoji(guild, 'arrow_right', '▶️');
     const trashEmoji = embeds.getButtonEmoji(guild, 'dustbin', '🗑️'); 
@@ -219,6 +218,12 @@ client.once('clientReady', async () => {
   ];
 
   try { await client.application.commands.set(commands); } catch (e) { console.error(e); }
+});
+
+// --- AUTO UPDATE EMOJIS ---
+client.on('emojiCreate', async (emoji) => {
+    console.log(`[DEBUG] New emoji added: ${emoji.name}. Cache updated!`);
+    await emoji.guild.emojis.fetch();
 });
 
 // --- SLASH COMMANDS ---
