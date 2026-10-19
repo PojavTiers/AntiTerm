@@ -45,7 +45,8 @@ function checkViolation(text, bannedWord) {
     return false;
 }
 
-function sendMessage(target, type, title, fields, guild, client, s) {
+// UPDATED: Now uses client instead of guild for embeds
+async function sendMessage(target, type, title, fields, guild, client, s) {
     let formattedDesc = "";
     if (Array.isArray(fields)) {
         formattedDesc = fields.map(f => `└ ${f}`).join('\n');
@@ -54,7 +55,8 @@ function sendMessage(target, type, title, fields, guild, client, s) {
     }
 
     if (s.useEmbeds) {
-        return target.reply({ embeds: [embeds[type](title, formattedDesc, guild, client)] });
+        const embed = await embeds[type](title, formattedDesc, guild, client);
+        return target.reply({ embeds: [embed] });
     } else {
         const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : type === 'warning' ? '⚠️' : 'ℹ️';
         return target.reply({ content: `${icon} **${title}**\n${formattedDesc}` });
@@ -99,7 +101,6 @@ function getNsfwThreshold(mode) {
     return 0.5; 
 }
 
-// --- NEW: FAST VIDEO COLLAGE GENERATOR (6 FRAMES) ---
 async function createVideoCollage(videoBuffer) {
     const tempVideoPath = path.join(os.tmpdir(), `vid_${Date.now()}.mp4`);
     const outputPath = path.join(os.tmpdir(), `collage_${Date.now()}.jpg`);
@@ -110,19 +111,15 @@ async function createVideoCollage(videoBuffer) {
             ffmpeg(tempVideoPath)
                 .on('end', resolve)
                 .on('error', reject)
-                // This filter grabs 6 frames and puts them in a 2x3 grid
                 .outputOptions([
-                    '-vf', 'select=\'gte(n,1)\',scale=320:240,tile=2x3', // 2 columns, 3 rows
+                    '-vf', 'select=\'gte(n,1)\',scale=320:240,tile=2x3',
                     '-frames:v', '1',
-                    '-q:v', '5' // Lower quality = faster upload/scan
+                    '-q:v', '5'
                 ])
                 .save(outputPath);
         });
-
-        const collageBuffer = fs.readFileSync(outputPath);
-        return collageBuffer;
+        return fs.readFileSync(outputPath);
     } catch (err) {
-        console.error("FFmpeg Collage Error:", err);
         return null;
     } finally {
         if (fs.existsSync(tempVideoPath)) fs.unlinkSync(tempVideoPath);
