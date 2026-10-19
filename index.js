@@ -23,11 +23,6 @@ client.once('clientReady', () => {
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild) return;
 
-  // Log EVERY message that has an attachment or a link
-  if (message.attachments.size > 0 || message.content.includes('http')) {
-     console.log(`[DEBUG] Message received. Attachments: ${message.attachments.size} | Content: ${message.content}`);
-  }
-
   if (!settings.has(message.guild.id)) {
     settings.set(message.guild.id, { antiNsfw: false, words: [] });
   }
@@ -44,7 +39,6 @@ client.on('messageCreate', async (message) => {
     console.log(`[DEBUG] AntiNSFW turned OFF for guild ${message.guild.id}`);
     return message.reply('❌ AntiNSFW is now **OFF**.');
   }
-  
   if (message.content.startsWith('$antibypassfilter add ')) {
     const word = message.content.slice('$antibypassfilter add '.length).toLowerCase().trim();
     if (!word) return message.reply('Usage: `$antibypassfilter add <word>`');
@@ -84,106 +78,124 @@ client.on('messageCreate', async (message) => {
   // --- IMAGE & LINK NSFW FILTER ---
   if (serverSettings.antiNsfw) {
     let mediaUrl = null;
-    let isGif = false;
 
-    // 1. Check for file uploads
     if (message.attachments.size > 0) {
-      const attachment = message.attachments.first();
-      mediaUrl = attachment.url;
-      if (attachment.contentType && attachment.contentType.includes('gif')) isGif = true;
-    } 
-    // 2. Check for pasted links in the text
-    else if (message.content.match(/https?:\/\/[^\s]+/)) {
-      const linkMatch = message.content.match(/https?:\/\/[^\s]+/)[0];
-      mediaUrl = linkMatch;
-      if (linkMatch.toLowerCase().includes('.gif')) isGif = true;
+      mediaUrl = message.attachments.first().url;
+    } else if (message.content.match(/https?:\/\/[^\s]+/)) {
+      mediaUrl = message.content.match(/https?:\/\/[^\s]+/)[0];
     }
 
     if (mediaUrl) {
-      console.log(`[DEBUG] Bot is attempting to scan: ${mediaUrl} | isGif: ${isGif}`);
+      console.log(`[DEBUG] Original link found: ${mediaUrl}`);
       
       try {
-        if (isGif) {
-          // --- GIF LOGIC ---
-          const response = await fetch(mediaUrl);
-          const arrayBuffer = await response.arrayBuffer();
-          const buffer = Buffer.from(arrayBuffer);
-          const frameData = await gifFrames({ url: buffer, frames: 'all', outputType: 'jpeg', cumulative: true });
-          
-          if (!frameData || frameData.length === 0) {
-             console.log('[DEBUG] Failed to extract GIF frames.');
-             return;
-          }
-          const totalFrames = frameData.length;
-          const framesToCheck = Math.min(5, totalFrames);
-          const step = Math.floor(totalFrames / framesToCheck) || 1;
-          
-          for (let i = 0; i < framesToCheck; i++) {
-            const frameIndex = i * step;
-            if (frameIndex >= totalFrames) break;
-            const frame = frameData[frameIndex];
-            const frameBuffer = await new Promise((resolve, reject) => {
-              const chunks = [];
-              const stream = frame.getImage();
-              stream.on('data', (chunk) => chunks.push(chunk));
-              stream.on('end', () => resolve(Buffer.concat(chunks)));
-              stream.on('error', reject);
-            });
-            const formData = new FormData();
-            const blob = new Blob([frameBuffer], { type: 'image/jpeg' });
-            formData.append('image', blob, `frame_${i}.jpg`);
-            const apiRes = await fetch(process.env.NSFW_API_URL + '/classify', {
-              method: 'POST',
-              headers: { 'Authorization': `Bearer ${process.env.API_KEY}` },
-              body: formData
-            });
-            const rawText = await apiRes.text();
-            console.log(`[DEBUG] Frame ${i} RESPONSE:`, rawText);
-            const data = JSON.parse(rawText);
+        let finalUrl = mediaUrl;
+        let isGif = finalUrl.toLowerCase().includes('.gif') || finalUrl.includes('tenor.com') || finalUrl.includes('giphy.com');
+
+        // --- SCRAPER LOGIC: If it's a website (like klipy.com), find the hidden .gif or .mp4 inside ---
+        if (!finalUrl.match(/\.(jpeg|jpg|png|gif|mp4|webp)/i) && !finalUrl.includes('cdn.discordapp.com')) {
+            console.log(`[DEBUG] Link is a website. Scraping for direct media...`);
+            const webRes = await fetch(finalUrl);
+            const html = await webRes.text();
             
-            // We check the scores manually here too! 
-            if (data.safe === false || (data.flags && data.flags.length > 0) || (data.scores && (data.scores.nsfw > 0.4 || data.scores.sexy > 0.4))) {
-              await message.delete().catch(() => {});
-              const warning = await message.channel.send(`⚠️ ${message.author}, NSFW GIFs are not allowed here.`);
-              setTimeout(() => warning.delete().catch(() => {}), 5000);
-              return; 
+            // Look for a GIF or MP4 link inside the HTML
+            const gifMatch = html.match(/(https:\/\/[^"']+\.gif)/i);
+            const mp4Match = html.match(/(https:\/\/[^"']+\.mp4)/i);
+            
+            if (gifMatch) {
+                finalUrl = gifMatch[0];
+                isGif = true;
+            } else if (mp4Match) {
+                finalUrl = mp4Match[0];
+                isGif = false; // Treat as video
+            } else {
+                // Try looking for og:image meta tag (common for klipy/tenor)
+                const ogMatch = html.match(/<meta property="og:image" content="([^"]+)"/i);
+                if (ogMatch) finalUrl = ogMatch[1];
             }
-          }
-          console.log('[DEBUG] GIF scan complete. No NSFW found.');
-        } else {
-          // --- NORMAL IMAGE LOGIC ---
-          const imageResponse = await fetch(mediaUrl);
-          const contentType = imageResponse.headers.get('content-type');
-          const imageBuffer = await imageResponse.arrayBuffer();
-          const blob = new Blob([imageBuffer], { type: contentType || 'image/jpeg' });
-          const formData = new FormData();
-          formData.append('image', blob, 'image.jpg');
+            console.log(`[DEBUG] Scraped URL: ${finalUrl} | isGif: ${isGif}`);
+        }
 
-          const response = await fetch(process.env.NSFW_API_URL + '/classify', {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${process.env.API_KEY}` },
-            body: formData
-          });
-
-          const rawText = await response.text();
-          console.log(`[DEBUG] IMAGE RESPONSE:`, rawText);
-          const data = JSON.parse(rawText);
-          
-          // THE FIX: We force-delete if the scores are above 0.4 (even if API says "safe")
-          const isUnsafeScore = data.scores && (
-              (data.scores.nsfw && data.scores.nsfw > 0.4) || 
-              (data.scores.sexy && data.scores.sexy > 0.4) || 
-              (data.scores.hentai && data.scores.hentai > 0.4) ||
-              (data.scores.porn && data.scores.porn > 0.4)
-          );
-
-          if (data.safe === false || (data.flags && data.flags.length > 0) || isUnsafeScore) {
-            console.log(`[DEBUG] Deleting image. Scores:`, data.scores);
-            await message.delete().catch(() => {});
-            const warning = await message.channel.send(`⚠️ ${message.author}, NSFW links/media are not allowed here.`);
-            setTimeout(() => warning.delete().catch(() => {}), 5000);
+        // --- SCAN LOGIC ---
+        const imageResponse = await fetch(finalUrl);
+        const contentType = imageResponse.headers.get('content-type');
+        const imageBuffer = await imageResponse.arrayBuffer();
+        
+        if (isGif && imageBuffer.byteLength < 5000000) { // Only try to extract frames if GIF is under 5MB
+          console.log(`[DEBUG] Extracting GIF frames...`);
+          const buffer = Buffer.from(imageBuffer);
+          try {
+              const frameData = await gifFrames({ url: buffer, frames: 'all', outputType: 'jpeg', cumulative: true });
+              if (frameData && frameData.length > 0) {
+                  const totalFrames = frameData.length;
+                  const framesToCheck = Math.min(5, totalFrames);
+                  const step = Math.floor(totalFrames / framesToCheck) || 1;
+                  
+                  for (let i = 0; i < framesToCheck; i++) {
+                    const frame = frameData[i * step];
+                    const frameBuffer = await new Promise((resolve, reject) => {
+                      const chunks = [];
+                      const stream = frame.getImage();
+                      stream.on('data', (chunk) => chunks.push(chunk));
+                      stream.on('end', () => resolve(Buffer.concat(chunks)));
+                      stream.on('error', reject);
+                    });
+                    const formData = new FormData();
+                    formData.append('image', new Blob([frameBuffer], { type: 'image/jpeg' }), `frame_${i}.jpg`);
+                    
+                    const apiRes = await fetch(process.env.NSFW_API_URL + '/classify', {
+                      method: 'POST',
+                      headers: { 'Authorization': `Bearer ${process.env.API_KEY}` },
+                      body: formData
+                    });
+                    const rawText = await apiRes.text();
+                    console.log(`[DEBUG] Frame ${i} RESPONSE:`, rawText);
+                    const data = JSON.parse(rawText);
+                    
+                    if (data.safe === false || (data.scores && (data.scores.nsfw > 0.4 || data.scores.sexy > 0.4 || data.scores.hentai > 0.4))) {
+                      await message.delete().catch(() => {});
+                      const warning = await message.channel.send(`⚠️ ${message.author}, NSFW GIFs are not allowed here.`);
+                      setTimeout(() => warning.delete().catch(() => {}), 5000);
+                      return; 
+                    }
+                  }
+                  console.log('[DEBUG] All GIF frames safe.');
+                  return; // Done scanning
+              }
+          } catch (e) {
+              console.log('[DEBUG] GIF frame extraction failed, scanning as static image.');
           }
         }
+        
+        // --- FALLBACK: Scan as static image (or MP4 first frame) ---
+        const blob = new Blob([imageBuffer], { type: contentType || 'image/jpeg' });
+        const formData = new FormData();
+        formData.append('image', blob, 'image.jpg');
+
+        const response = await fetch(process.env.NSFW_API_URL + '/classify', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${process.env.API_KEY}` },
+          body: formData
+        });
+
+        const rawText = await response.text();
+        console.log(`[DEBUG] FULL RESPONSE:`, rawText);
+        const data = JSON.parse(rawText);
+        
+        const isUnsafeScore = data.scores && (
+            (data.scores.nsfw && data.scores.nsfw > 0.4) || 
+            (data.scores.sexy && data.scores.sexy > 0.4) || 
+            (data.scores.hentai && data.scores.hentai > 0.4) ||
+            (data.scores.porn && data.scores.porn > 0.4)
+        );
+
+        if (data.safe === false || (data.flags && data.flags.length > 0) || isUnsafeScore) {
+          console.log(`[DEBUG] Deleting image. Scores:`, data.scores);
+          await message.delete().catch(() => {});
+          const warning = await message.channel.send(`⚠️ ${message.author}, NSFW media is not allowed here.`);
+          setTimeout(() => warning.delete().catch(() => {}), 5000);
+        }
+
       } catch (err) {
         console.error('[DEBUG] Failed to scan media:', err);
       }
