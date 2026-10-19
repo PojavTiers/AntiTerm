@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, PermissionFlagsBits } = require('discord.js');
+const { Client, GatewayIntentBits, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require('discord.js');
 const gifFrames = require('gif-frames');
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegPath = require('ffmpeg-static');
@@ -29,8 +29,6 @@ const settings = new Map();
 // ==========================================
 const EXTREME_SLURS = ['put_racial_slurs_here', 'put_extreme_slurs_here']; 
 const MEDIUM_INSULTS = ['asshole', 'bastard', 'retard', 'whore', 'slut'];
-
-// Words that trigger false positives and should NEVER be filtered by default
 const SAFE_WORDS = ['nsfw', 'sex', 'sexual', 'assume', 'assassin', 'class', 'pass', 'bass', 'grass', 'mass', 'cocktail', 'peacock', 'shitake', 'hello', 'help'];
 
 let WEB_PROFANITY_LIST = [];
@@ -39,14 +37,12 @@ async function fetchWebProfanity() {
     try {
         const response = await fetch('https://raw.githubusercontent.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words/master/en');
         const text = await response.text();
-        // Filter out words that cause issues, and filter out short words
         WEB_PROFANITY_LIST = text.split('\n').map(w => w.trim().toLowerCase()).filter(w => w.length > 2 && !SAFE_WORDS.includes(w));
         console.log(`[DEBUG] Downloaded ${WEB_PROFANITY_LIST.length} bad words.`);
     } catch (e) { console.error('[DEBUG] Failed to fetch profanity list:', e); }
 }
 
 // --- HELPERS ---
-
 function normalise(text) {
   return text.toLowerCase().normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g, '')
     .replace(/0/g, 'o').replace(/1/g, 'i').replace(/3/g, 'e').replace(/4/g, 'a').replace(/5/g, 's').replace(/7/g, 't').replace(/@/g, 'a').replace(/\$/g, 's').replace(/[^a-z]/g, '');
@@ -58,13 +54,11 @@ function isCloseEnough(input, target) {
     return levenshtein.get(input, target) <= 1; 
 }
 
-// Advanced Context-Aware Violation Checker
 function checkViolation(text, bannedWord) {
     const cleanBanned = normalise(bannedWord);
     if (!cleanBanned || cleanBanned.length < 3) return false;
     if (SAFE_WORDS.includes(cleanBanned)) return false;
 
-    // 1. Split text into words and check individually (No false positives here)
     const words = text.split(/[\s,.!?]+/); 
     for (const w of words) {
         if (!w) continue;
@@ -74,12 +68,10 @@ function checkViolation(text, bannedWord) {
         if (cleanW === cleanBanned) return true;
         if (cleanW.length > 2 && isCloseEnough(cleanW, cleanBanned)) return true;
         
-        // Check for repeating letters (e.g., shiiiiit -> shit)
         const collapsed = cleanW.replace(/(.)\1{2,}/g, '$1');
         if (collapsed === cleanBanned) return true;
     }
 
-    // 2. Check for spaced out bypass (w o r d) - only if the word is long enough (prevents "ass" matching normal text)
     if (cleanBanned.length > 4) {
         const fullClean = normalise(text);
         if (fullClean.includes(cleanBanned)) return true;
@@ -87,7 +79,6 @@ function checkViolation(text, bannedWord) {
     return false;
 }
 
-// Authorization Checker
 function isAuthorized(member, s) {
     if (!member) return false;
     if (member.permissions.has(PermissionFlagsBits.Administrator)) return true;
@@ -112,18 +103,51 @@ function parseDuration(str) {
 async function applyPunishment(member, type, durationStr, reason, message, client) {
     if (type === 'delete' || !type) return; 
     try {
-        if (type === 'mute') {
-            const ms = parseDuration(durationStr);
-            await member.timeout(ms, reason);
-        } else if (type === 'kick') {
-            await member.kick(reason);
-        } else if (type === 'ban') {
-            await member.ban({ reason });
-        }
+        if (type === 'mute') await member.timeout(parseDuration(durationStr), reason);
+        else if (type === 'kick') await member.kick(reason);
+        else if (type === 'ban') await member.ban({ reason });
     } catch (e) {
         console.error(`Failed to ${type} user:`, e);
         if (message) message.channel.send({ embeds: [embeds.error('Punishment Failed', `Could not ${type} the user. Check my role position and permissions!`, client)] });
     }
+}
+
+// --- HELP MENU BUILDER ---
+function getHelpMenu(page, client, totalPages) {
+    const p1 = `
+**Moderation Configuration**
+These commands require Administrator permissions.
+
+\`antinsfw on/off\` \`antinsfw punishment:\`
+\`antinsfwmessages on/off\` \`antinsfwmessages sensitivity:\`
+\`antitermadmin add/remove/list\`
+    `;
+    const p2 = `
+**Custom Filtering**
+Protect your server from specific words or bypasses.
+
+\`antibypassfilter add <word>\`
+\`antibypassfilter remove <word>\`
+\`antibypassfilter list\`
+
+**Example Usage:**
+\`$antinsfwmessages on 0.8 --punishment:mute --duration:1h\`
+\`$antinsfw on --punishment:ban\`
+    `;
+
+    const descriptions = [p1, p2];
+    const titles = ['Moderation Commands (5)', 'Filter Commands (3)'];
+    const categories = ['Moderation', 'Configuration'];
+    
+    return embeds.shield(titles[page-1], descriptions[page-1], client, categories[page-1], page, totalPages);
+}
+
+function getHelpButtons(page, totalPages) {
+    return new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('prev_page').setEmoji('◀️').setStyle(ButtonStyle.Secondary).setDisabled(page === 1),
+        new ButtonBuilder().setCustomId('next_page').setEmoji('▶️').setStyle(ButtonStyle.Secondary).setDisabled(page === totalPages),
+        new ButtonBuilder().setCustomId('delete_msg').setEmoji('🗑️').setStyle(ButtonStyle.Danger)
+    );
 }
 
 client.once('clientReady', async () => {
@@ -145,7 +169,7 @@ client.once('clientReady', async () => {
       options: [
         { name: 'state', description: 'On or off', type: 3, required: true, choices: [{ name: 'On', value: 'on' }, { name: 'Off', value: 'off' }] },
         { name: 'punishment', description: 'What to do when NSFW is found', type: 3, required: false, choices: punishmentOptions },
-        { name: 'duration', description: 'Mute duration (e.g. 10m, 1h, 1d). Ignored for kick/ban.', type: 3, required: false }
+        { name: 'duration', description: 'Mute duration (e.g. 10m, 1h, 1d).', type: 3, required: false }
       ]
     },
     {
@@ -156,7 +180,7 @@ client.once('clientReady', async () => {
         { name: 'state', description: 'On or off', type: 3, required: true, choices: [{ name: 'On', value: 'on' }, { name: 'Off', value: 'off' }] },
         { name: 'sensitivity', description: '0.1 (Slurs only) to 0.9 (Everything)', type: 3, required: false },
         { name: 'punishment', description: 'What to do when bad words are found', type: 3, required: false, choices: punishmentOptions },
-        { name: 'duration', description: 'Mute duration (e.g. 10m, 1h, 1d). Ignored for kick/ban.', type: 3, required: false }
+        { name: 'duration', description: 'Mute duration (e.g. 10m, 1h, 1d).', type: 3, required: false }
       ]
     },
     {
@@ -174,7 +198,7 @@ client.once('clientReady', async () => {
       defaultMemberPermissions: PermissionFlagsBits.Administrator,
       options: [
         { name: 'action', description: 'Add, Remove, or List', type: 3, required: true, choices: [{ name: 'Add', value: 'add' }, { name: 'Remove', value: 'remove' }, { name: 'List', value: 'list' }] },
-        { name: 'user', description: 'The user to add/remove', type: 6, required: false } // 6 is USER type
+        { name: 'user', description: 'The user to add/remove', type: 6, required: false }
       ]
     }
   ];
@@ -182,17 +206,22 @@ client.once('clientReady', async () => {
   try { await client.application.commands.set(commands); } catch (e) { console.error(e); }
 });
 
+// --- SLASH COMMANDS ---
 client.on('interactionCreate', async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
+  if (!interaction.isChatInputCommand() && !interaction.isButton()) return;
   
-  if (!settings.has(interaction.guild.id)) settings.set(interaction.guild.id, { 
-      antiNsfw: false, nsfwPunish: 'delete', nsfwDur: '1h',
-      termMessages: false, sensitivity: 0.5, msgPunish: 'delete', msgDur: '1h', 
-      words: [], allowedUsers: [] 
-  });
+  if (interaction.isButton()) {
+      // Handle Help Menu Buttons
+      if (interaction.customId === 'delete_msg') {
+          return interaction.message.delete().catch(()=>{});
+      }
+      // (If you add more pages later, handle prev/next here. Currently 2 pages)
+      return;
+  }
+
+  if (!settings.has(interaction.guild.id)) settings.set(interaction.guild.id, { antiNsfw: false, nsfwPunish: 'delete', nsfwDur: '1h', termMessages: false, sensitivity: 0.5, msgPunish: 'delete', msgDur: '1h', words: [], allowedUsers: [] });
   const s = settings.get(interaction.guild.id);
 
-  // Handled by defaultMemberPermissions natively, but double checking:
   if (!isAuthorized(interaction.member, s)) {
       return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
   }
@@ -206,7 +235,7 @@ client.on('interactionCreate', async (interaction) => {
     if (punish) s.nsfwPunish = punish;
     if (dur) s.nsfwDur = dur;
 
-    const title = `| Filtering **NSFW** ${state === 'on' ? 'On' : 'Off'}`;
+    const title = `Filtering **NSFW** ${state === 'on' ? 'On' : 'Off'}`;
     const desc = `- **Filtering:** \`${state}\`\n- **Punishment:** \`${s.nsfwPunish}\`${s.nsfwPunish === 'mute' ? ` (\`${s.nsfwDur}\`)` : ''}`;
     return interaction.reply({ embeds: [embeds.success(title, desc, client)] });
   }
@@ -218,16 +247,11 @@ client.on('interactionCreate', async (interaction) => {
     const dur = interaction.options.getString('duration');
     
     s.termMessages = (state === 'on');
-
-    if (sensInput) {
-        const parsed = parseFloat(sensInput);
-        if (parsed >= 0.1 && parsed <= 0.9) s.sensitivity = parsed;
-        else return interaction.reply({ embeds: [embeds.error('Invalid Sensitivity', 'Must be between 0.1 and 0.9.', client)] });
-    }
+    if (sensInput) s.sensitivity = parseFloat(sensInput);
     if (punish) s.msgPunish = punish;
     if (dur) s.msgDur = dur;
 
-    const title = `| Filtering **Messages** ${state === 'on' ? 'On' : 'Off'}`;
+    const title = `Filtering **Messages** ${state === 'on' ? 'On' : 'Off'}`;
     const desc = `- **Filtering:** \`${state}\`\n- **Sensitivity:** \`${s.sensitivity}\`\n- **Punishment:** \`${s.msgPunish}\`${s.msgPunish === 'mute' ? ` (\`${s.msgDur}\`)` : ''}`;
     return interaction.reply({ embeds: [embeds.success(title, desc, client)] });
   }
@@ -279,14 +303,11 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
+// --- PREFIX COMMANDS & MESSAGE FILTER ---
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild) return;
 
-  if (!settings.has(message.guild.id)) settings.set(message.guild.id, { 
-      antiNsfw: false, nsfwPunish: 'delete', nsfwDur: '1h',
-      termMessages: false, sensitivity: 0.5, msgPunish: 'delete', msgDur: '1h', 
-      words: [], allowedUsers: [] 
-  });
+  if (!settings.has(message.guild.id)) settings.set(message.guild.id, { antiNsfw: false, nsfwPunish: 'delete', nsfwDur: '1h', termMessages: false, sensitivity: 0.5, msgPunish: 'delete', msgDur: '1h', words: [], allowedUsers: [] });
   const s = settings.get(message.guild.id);
 
   if (message.content.startsWith('$')) {
@@ -296,7 +317,40 @@ client.on('messageCreate', async (message) => {
           return;
       }
       
-      // --- PREFIX COMMANDS ---
+      // --- HELP MENU ---
+      if (message.content === '$help') {
+        let currentPage = 1;
+        const totalPages = 2;
+        
+        const msg = await message.reply({ 
+            embeds: [getHelpMenu(currentPage, client, totalPages)], 
+            components: [getHelpButtons(currentPage, totalPages)] 
+        });
+
+        const collector = msg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 60000 });
+
+        collector.on('collect', async i => {
+            if (i.user.id !== message.author.id) return i.reply({ content: "You cannot use these buttons.", ephemeral: true });
+            
+            if (i.customId === 'delete_msg') {
+                await msg.delete().catch(()=>{});
+                collector.stop();
+                return;
+            }
+
+            if (i.customId === 'prev_page' && currentPage > 1) currentPage--;
+            if (i.customId === 'next_page' && currentPage < totalPages) currentPage++;
+
+            await i.update({ 
+                embeds: [getHelpMenu(currentPage, client, totalPages)], 
+                components: [getHelpButtons(currentPage, totalPages)] 
+            });
+        });
+
+        collector.on('end', () => { msg.edit({ components: [] }).catch(()=>{}); });
+        return;
+      }
+
       if (message.content.startsWith('$antinsfwmessages')) {
         const match = message.content.match(/^\$antinsfwmessages\s+(on|off)(?:\s+(0\.[1-9]))?(?:\s+--punishment:?(\w+))?(?:\s+--duration:?(\w+))?/i);
         if (!match) return message.reply({ embeds: [embeds.error('Invalid Syntax', 'Usage: `$antinsfwmessages <on/off> [0.1-0.9] [--punishment:delete/mute/kick/ban] [--duration:1h]`', client)] });
@@ -307,7 +361,7 @@ client.on('messageCreate', async (message) => {
         if (match[4]) s.msgDur = match[4].toLowerCase();
         s.termMessages = (state === 'on');
 
-        const title = `| Filtering **Messages** ${state === 'on' ? 'On' : 'Off'}`;
+        const title = `Filtering **Messages** ${state === 'on' ? 'On' : 'Off'}`;
         const desc = `- **Filtering:** \`${state}\`\n- **Sensitivity:** \`${s.sensitivity}\`\n- **Punishment:** \`${s.msgPunish}\`${s.msgPunish === 'mute' ? ` (\`${s.msgDur}\`)` : ''}`;
         return message.reply({ embeds: [embeds.success(title, desc, client)] });
       }
@@ -321,25 +375,9 @@ client.on('messageCreate', async (message) => {
         if (match[3]) s.nsfwDur = match[3].toLowerCase();
         s.antiNsfw = (state === 'on');
 
-        const title = `| Filtering **NSFW** ${state === 'on' ? 'On' : 'Off'}`;
+        const title = `Filtering **NSFW** ${state === 'on' ? 'On' : 'Off'}`;
         const desc = `- **Filtering:** \`${state}\`\n- **Punishment:** \`${s.nsfwPunish}\`${s.nsfwPunish === 'mute' ? ` (\`${s.nsfwDur}\`)` : ''}`;
         return message.reply({ embeds: [embeds.success(title, desc, client)] });
-      }
-
-      if (message.content === '$help') {
-        const helpDesc = `
-**🛡️ AntiTerm Security**
-*(Admin Only Commands)*
-\`/antinsfw <on/off> [punishment]\`
-\`/antinsfwmessages <on/off> [sensitivity] [punishment]\`
-\`/antibypassfilter add/remove/list\`
-\`/antitermadmin add/remove/list @user\`
-
-**Prefix Examples**
-\`$antinsfwmessages on 0.8 --punishment:mute --duration:1h\`
-\`$antinsfw on --punishment:ban\`
-        `;
-        return message.reply({ embeds: [embeds.info('Help Menu', helpDesc, client)] });
       }
       
       return; 
@@ -348,8 +386,6 @@ client.on('messageCreate', async (message) => {
   // --- TEXT FILTER EXECUTION ---
   if (s.termMessages) {
     let violation = false;
-
-    // Check Custom words, Extreme, Medium, and Web lists using our new Smart Check
     if (s.words.some(w => checkViolation(message.content, w))) violation = true;
     else if (EXTREME_SLURS.some(w => checkViolation(message.content, w))) violation = true;
     else if (s.sensitivity >= 0.4 && MEDIUM_INSULTS.some(w => checkViolation(message.content, w))) violation = true;
@@ -358,7 +394,6 @@ client.on('messageCreate', async (message) => {
     if (violation) {
         await message.delete().catch(() => {});
         await applyPunishment(message.member, s.msgPunish, s.msgDur, 'Used a banned word.', message, client);
-
         const warning = await message.channel.send({ embeds: [embeds.warning('Word Blocked', `${message.author}, that word is not allowed.\nAction: **${s.msgPunish.toUpperCase()}**`, client)] });
         setTimeout(() => warning.delete().catch(() => {}), 5000);
         return; 
@@ -435,7 +470,6 @@ client.on('messageCreate', async (message) => {
          if (isUnsafe) {
            await message.delete().catch(() => {});
            await applyPunishment(message.member, s.nsfwPunish, s.nsfwDur, 'Posted NSFW media.', message, client);
-           
            const warningMsg = await message.channel.send({ embeds: [embeds.warning('NSFW Detected', `Image detected as **NSFW** and deleted the message.\nAction: **${s.nsfwPunish.toUpperCase()}**`, client)] });
            setTimeout(() => warningMsg.delete().catch(() => {}), 5000);
          }
