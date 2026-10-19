@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, PermissionFlagsBits } = require('discord.js');
+const { Client, GatewayIntentBits } = require('discord.js');
 const gifFrames = require('gif-frames');
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegPath = require('ffmpeg-static');
@@ -25,28 +25,45 @@ const client = new Client({
 const settings = new Map();
 
 // ==========================================
-// 🚨 THE WORD LISTS 🚨
+// 🚨 WORD LISTS & WEB FETCHING 🚨
 // ==========================================
-// YOU MUST FILL IN THE EXTREME SLURS YOURSELF.
-// I CANNOT PROVIDE THEM DUE TO SAFETY POLICIES.
-const WORD_LISTS = {
-    // Detected at sensitivity 0.1 to 0.9
-    extreme: ['put_actual_racial_slurs_here', 'put_actual_extreme_slurs_here'], 
-    
-    // Detected at sensitivity 0.4 to 0.9
-    severe: ['asshole', 'bastard', 'retard', 'whore', 'slut'],
-    
-    // Detected at sensitivity 0.7 to 0.9 (Everyday bad words)
-    profanity: ['fuck', 'shit', 'bitch', 'dick', 'pussy', 'stupid', 'dork', 'idiot']
-};
+// YOU MUST FILL IN THE EXTREME SLURS HERE.
+// (Websites mix normal swears with slurs, so we keep the absolute worst ones hardcoded to protect your server).
+const EXTREME_SLURS = ['put_racial_slurs_here', 'put_extreme_slurs_here']; 
+const MEDIUM_INSULTS = ['asshole', 'bastard', 'retard', 'whore', 'slut'];
 
-// Advanced Normalisation (strips spaces, converts leetspeak)
+let WEB_PROFANITY_LIST = []; // This will hold the downloaded words
+
+async function fetchWebProfanity() {
+    try {
+        console.log('[DEBUG] Downloading bad words from GitHub...');
+        // Fetching a massive list of 400+ bad words from the LDNOOBW GitHub repo
+        const response = await fetch('https://raw.githubusercontent.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words/master/en');
+        const text = await response.text();
+        
+        // Split by new lines and clean up the words
+        WEB_PROFANITY_LIST = text.split('\n').map(w => w.trim().toLowerCase()).filter(w => w.length > 2);
+        console.log(`[DEBUG] Successfully downloaded ${WEB_PROFANITY_LIST.length} bad words from the web!`);
+    } catch (e) {
+        console.error('[DEBUG] Failed to fetch web profanity list:', e);
+    }
+}
+
+// Advanced Normalisation (strips invisible chars, fixes homoglyphs, leetspeak, etc.)
 function normalise(text) {
-  return text.toLowerCase().replace(/0/g, 'o').replace(/1/g, 'i').replace(/3/g, 'e').replace(/4/g, 'a').replace(/5/g, 's').replace(/7/g, 't').replace(/@/g, 'a').replace(/\$/g, 's').replace(/[^a-z]/g, '');
+  return text
+    .toLowerCase()
+    .normalize('NFKC') // Fixes weird foreign letters that look like English
+    .replace(/[\u200B-\u200D\uFEFF]/g, '') // Removes invisible zero-width spaces
+    .replace(/0/g, 'o').replace(/1/g, 'i').replace(/3/g, 'e')
+    .replace(/4/g, 'a').replace(/5/g, 's').replace(/7/g, 't')
+    .replace(/@/g, 'a').replace(/\$/g, 's')
+    .replace(/[^a-z]/g, ''); // Removes everything that isn't a letter
 }
 
 // Advanced Fuzzy Matching (Checks if a word is close to a banned word)
 function isCloseEnough(input, target) {
+    if (!input || !target) return false;
     const dist = levenshtein.get(input, target);
     const threshold = target.length > 5 ? 2 : 1;
     return dist <= threshold;
@@ -54,44 +71,41 @@ function isCloseEnough(input, target) {
 
 client.once('clientReady', async () => {
   console.log(`✅ ${client.user.tag} is online!`);
+  
+  // Download the web list on startup
+  await fetchWebProfanity();
 
   const commands = [
     {
       name: 'antinsfw',
       description: 'Toggle the AI NSFW image/video scanner',
-      options: [{
-        name: 'state', description: 'Turn it on or off', type: 3, required: true, choices: [{ name: 'On', value: 'on' }, { name: 'Off', value: 'off' }]
-      }]
+      options: [{ name: 'state', description: 'On or off', type: 3, required: true, choices: [{ name: 'On', value: 'on' }, { name: 'Off', value: 'off' }] }]
     },
     {
       name: 'antinsfwmessages',
-      description: 'Toggle the text filter and set sensitivity',
-      options: [{
-        name: 'state', description: 'Turn it on or off', type: 3, required: true, choices: [{ name: 'On', value: 'on' }, { name: 'Off', value: 'off' }]
-      },
-      {
-        name: 'sensitivity', description: '0.1 (Only extreme slurs) to 0.9 (Everything)', type: 3, required: false
-      }]
+      description: 'Toggle text filter and set sensitivity',
+      options: [
+        { name: 'state', description: 'On or off', type: 3, required: true, choices: [{ name: 'On', value: 'on' }, { name: 'Off', value: 'off' }] },
+        { name: 'sensitivity', description: '0.1 (Slurs only) to 0.9 (Everything)', type: 3, required: false }
+      ]
     },
     {
       name: 'antibypassfilter',
       description: 'Manage custom server filter words',
-      options: [{
-        name: 'action', description: 'Add, Remove, or List', type: 3, required: true, choices: [{ name: 'Add', value: 'add' }, { name: 'Remove', value: 'remove' }, { name: 'List', value: 'list' }]
-      }, { name: 'word', description: 'The word', type: 3, required: false }]
+      options: [
+        { name: 'action', description: 'Add, Remove, or List', type: 3, required: true, choices: [{ name: 'Add', value: 'add' }, { name: 'Remove', value: 'remove' }, { name: 'List', value: 'list' }] },
+        { name: 'word', description: 'The word', type: 3, required: false }
+      ]
     }
   ];
 
-  try {
-    await client.application.commands.set(commands);
-  } catch (e) { console.error(e); }
+  try { await client.application.commands.set(commands); } catch (e) { console.error(e); }
 });
 
+// --- SLASH COMMANDS ---
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
-  if (!settings.has(interaction.guild.id)) {
-    settings.set(interaction.guild.id, { antiNsfw: false, termMessages: false, sensitivity: 0.5, words: [] });
-  }
+  if (!settings.has(interaction.guild.id)) settings.set(interaction.guild.id, { antiNsfw: false, termMessages: false, sensitivity: 0.5, words: [] });
   const serverSettings = settings.get(interaction.guild.id);
 
   if (interaction.commandName === 'antinsfw') {
@@ -108,14 +122,10 @@ client.on('interactionCreate', async (interaction) => {
     let sensText = `Current sensitivity: **${serverSettings.sensitivity}**`;
     if (sensInput) {
         const parsed = parseFloat(sensInput);
-        if (parsed >= 0.1 && parsed <= 0.9) {
-            serverSettings.sensitivity = parsed;
-            sensText = `Sensitivity set to: **${parsed}**`;
-        } else {
-            return interaction.reply({ embeds: [embeds.error('Invalid Sensitivity', 'Sensitivity must be between 0.1 and 0.9.', client)] });
-        }
+        if (parsed >= 0.1 && parsed <= 0.9) { serverSettings.sensitivity = parsed; sensText = `Sensitivity set to: **${parsed}**`; }
+        else return interaction.reply({ embeds: [embeds.error('Invalid Sensitivity', 'Must be between 0.1 and 0.9.', client)] });
     }
-    return interaction.reply({ embeds: [embeds.success(`Term Filter ${state.toUpperCase()}`, `Text filtering is now ${state}.\n${sensText}`, client)] });
+    return interaction.reply({ embeds: [embeds.success(`Term Filter ${state.toUpperCase()}`, `Filter is ${state}.\n${sensText}`, client)] });
   }
 
   if (interaction.commandName === 'antibypassfilter') {
@@ -123,7 +133,7 @@ client.on('interactionCreate', async (interaction) => {
     const word = interaction.options.getString('word')?.toLowerCase().trim();
 
     if (action === 'list') {
-      if (serverSettings.words.length === 0) return interaction.reply({ embeds: [embeds.warning('Empty', 'No custom words in filter.', client)] });
+      if (serverSettings.words.length === 0) return interaction.reply({ embeds: [embeds.warning('Empty', 'No custom words.', client)] });
       return interaction.reply({ embeds: [embeds.info('Filtered Words', `\`${serverSettings.words.join('`, `')}\``, client)] });
     }
     if (!word) return interaction.reply({ embeds: [embeds.error('Error', 'Provide a word.', client)] });
@@ -142,36 +152,26 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
+// --- PREFIX COMMANDS & MESSAGE FILTER ---
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild) return;
 
-  if (!settings.has(message.guild.id)) {
-    settings.set(message.guild.id, { antiNsfw: false, termMessages: false, sensitivity: 0.5, words: [] });
-  }
+  if (!settings.has(message.guild.id)) settings.set(message.guild.id, { antiNsfw: false, termMessages: false, sensitivity: 0.5, words: [] });
   const serverSettings = settings.get(message.guild.id);
 
   // --- PREFIX COMMANDS ---
   if (message.content.startsWith('$antinsfwmessages')) {
-    // Regex to parse: $antinsfwmessages on --sensitivity 0.8
     const match = message.content.match(/^\$antinsfwmessages\s+(on|off)(?:\s+(?:--sensitivity|-s)\s+(0\.[1-9]))?/i);
-    
-    if (!match) {
-        return message.reply({ embeds: [embeds.error('Invalid Syntax', 'Usage: `$antinsfwmessages <on/off> [--sensitivity 0.1-0.9]`', client)] });
-    }
+    if (!match) return message.reply({ embeds: [embeds.error('Invalid Syntax', 'Usage: `$antinsfwmessages <on/off> [--sensitivity 0.1-0.9]`', client)] });
 
     const state = match[1].toLowerCase();
     const sens = match[2];
-
     serverSettings.termMessages = (state === 'on');
     
     let sensText = `Current sensitivity: **${serverSettings.sensitivity}**`;
-    if (sens) {
-        const parsed = parseFloat(sens);
-        serverSettings.sensitivity = parsed;
-        sensText = `Sensitivity set to: **${parsed}**`;
-    }
+    if (sens) { const parsed = parseFloat(sens); serverSettings.sensitivity = parsed; sensText = `Sensitivity set to: **${parsed}**`; }
 
-    return message.reply({ embeds: [embeds.success(`Term Filter ${state.toUpperCase()}`, `Text filtering is now ${state}.\n${sensText}`, client)] });
+    return message.reply({ embeds: [embeds.success(`Term Filter ${state.toUpperCase()}`, `Filter is ${state}.\n${sensText}`, client)] });
   }
 
   if (message.content === '$antinsfw on') {
@@ -203,31 +203,31 @@ client.on('messageCreate', async (message) => {
   // --- ADVANCED TEXT FILTER LOGIC ---
   if (serverSettings.termMessages) {
     const rawWords = message.content.split(/ +/);
-    let violationType = null; // 'extreme', 'severe', 'profanity', or 'custom'
+    let violationType = null;
 
     for (const rawWord of rawWords) {
         const cleanWord = normalise(rawWord);
         if (cleanWord.length < 3) continue;
 
-        // 1. Check Custom Filter (Always active if added to list)
+        // 1. Check Custom Filter
         if (!violationType && serverSettings.words.find(b => cleanWord.includes(normalise(b)) || isCloseEnough(cleanWord, normalise(b)))) {
             violationType = 'custom';
         }
 
-        // 2. Check based on Sensitivity Level
+        // 2. Check Severity Levels
         if (!violationType) {
             const sens = serverSettings.sensitivity;
 
-            // Extreme (Always checked at any sensitivity 0.1+)
-            if (WORD_LISTS.extreme.find(w => cleanWord.includes(w) || isCloseEnough(cleanWord, w))) {
+            // Extreme (0.1+)
+            if (EXTREME_SLURS.find(w => cleanWord.includes(normalise(w)) || isCloseEnough(cleanWord, normalise(w)))) {
                 violationType = 'extreme';
             }
-            // Severe (Checked if sensitivity >= 0.4)
-            else if (sens >= 0.4 && WORD_LISTS.severe.find(w => cleanWord.includes(w) || isCloseEnough(cleanWord, w))) {
+            // Medium Insults (0.4+)
+            else if (sens >= 0.4 && MEDIUM_INSULTS.find(w => cleanWord.includes(normalise(w)) || isCloseEnough(cleanWord, normalise(w)))) {
                 violationType = 'severe';
             }
-            // Profanity (Checked if sensitivity >= 0.7)
-            else if (sens >= 0.7 && WORD_LISTS.profanity.find(w => cleanWord.includes(w) || isCloseEnough(cleanWord, w))) {
+            // Web Profanity (0.7+) - THIS USES THE LIST FETCHED FROM THE WEB
+            else if (sens >= 0.7 && WEB_PROFANITY_LIST.find(w => cleanWord.includes(normalise(w)) || isCloseEnough(cleanWord, normalise(w)))) {
                 violationType = 'profanity';
             }
         }
@@ -236,7 +236,6 @@ client.on('messageCreate', async (message) => {
     if (violationType) {
         await message.delete().catch(() => {});
         
-        // If it's an extreme slur, MUTE THEM.
         if (violationType === 'extreme') {
             try {
                 await message.member.timeout(3600000, 'Used an extreme slur.'); // 1 Hour
@@ -247,7 +246,6 @@ client.on('messageCreate', async (message) => {
                 setTimeout(() => warning.delete().catch(() => {}), 5000);
             }
         } else {
-            // Normal warning for severe/profanity/custom
             const warning = await message.channel.send({ embeds: [embeds.warning('Word Blocked', `${message.author}, that word is not allowed.`, client)] });
             setTimeout(() => warning.delete().catch(() => {}), 5000);
         }
@@ -257,7 +255,6 @@ client.on('messageCreate', async (message) => {
 
   // --- AI IMAGE & VIDEO SCANNER ---
   if (serverSettings.antiNsfw) {
-     // ... [The entire FFMPEG/NSFW logic remains exactly the same as previous message] ...
      let mediaUrl = null;
      if (message.attachments.size > 0) mediaUrl = message.attachments.first().url;
      else if (message.embeds.length > 0) {
