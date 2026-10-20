@@ -2,16 +2,16 @@ const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, TextDisp
 const embeds = require('./embeds.js');
 
 async function getHelpContainer(page, client, totalPages) {
-    const infoDisplay = await embeds.getEmoji(client, 'info', '[info]');
-    const shieldDisplay = await embeds.getEmoji(client, 'shield', '[shield]');
-    const settingsDisplay = await embeds.getEmoji(client, 'settings', '[settings]');
+    const infoDisplay = await embeds.getEmoji(client, 'info', 'ℹ️');
+    const shieldDisplay = await embeds.getEmoji(client, 'shield', '🛡️');
+    const settingsDisplay = await embeds.getEmoji(client, 'settings', '⚙️');
     
     const p1 = `
 ### ${infoDisplay} AntiTerm Help
 
 **${shieldDisplay} Setup & Moderation**
 **\`AntiNsfw\`** - Scan images/videos.
-**\`NoNsfwText\`** - Scan bad words.
+**\`NoNsfwText\`** - Toggle custom text filter.
 
 **${settingsDisplay} Configuration**
 **\`Config\`** - Toggle embeds and warnings.
@@ -26,7 +26,7 @@ async function getHelpContainer(page, client, totalPages) {
 \`$AntiNsfw on --mode:advanced --punishment:mute\`
 
 **To enable the text filter:**
-\`$NoNsfwText on 0.8 --punishment:delete\`
+\`$NoNsfwText on --punishment:delete\`
 
 **To add a custom word to the filter:**
 \`$Filter add badword\`
