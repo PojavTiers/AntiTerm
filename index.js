@@ -10,9 +10,8 @@ const os = require('os');
 const embeds = require('./embeds.js');
 const setActivity = require('./activity.js');
 const { connectDB, getSettings } = require('./database.js');
-const { sendMessage, isAuthorized, checkViolation, applyPunishment, getNsfwThreshold, createVideoCollage, SAFE_WORDS } = require('./utils.js');
+const { sendMessage, isAuthorized, checkViolation, applyPunishment, getNsfwThreshold, createVideoCollage } = require('./utils.js');
 const { getHelpContainer } = require('./help.js');
-const { handleConfig } = require('./config.js');
 
 ffmpeg.setFfmpegPath(ffmpegPath);
 ffmpeg.setFfprobePath(ffprobePath);
@@ -53,11 +52,10 @@ client.once('clientReady', async () => {
   setActivity(client);
   
   try { 
-      // 1. Wipe Global Commands (Fixes the old ones lingering)
+      // Wipe old commands
       await client.application.commands.set([]);
-      console.log('✅ Cleared Global Commands');
 
-      // 2. Register New Commands for your specific server instantly
+      // Register new streamlined commands
       const mainGuild = client.guilds.cache.get('1500445119185293404');
       if (mainGuild) {
           await mainGuild.commands.set([
@@ -73,16 +71,6 @@ client.once('clientReady', async () => {
               ]
             },
             {
-              name: 'antinsfwmessages',
-              description: 'Toggle the custom text filter on or off',
-              defaultMemberPermissions: PermissionFlagsBits.Administrator,
-              options: [
-                { name: 'state', description: 'On or off', type: 3, required: true, choices: [{ name: 'On', value: 'on' }, { name: 'Off', value: 'off' }] },
-                { name: 'punishment', description: 'Punishment', type: 3, required: false, choices: [{ name: 'Delete', value: 'delete' }, { name: 'Mute', value: 'mute' }, { name: 'Kick', value: 'kick' }, { name: 'Ban', value: 'ban' }] },
-                { name: 'duration', description: 'Mute duration', type: 3, required: false }
-              ]
-            },
-            {
               name: 'antibypassfilter',
               description: 'Manage custom server filter words',
               defaultMemberPermissions: PermissionFlagsBits.Administrator,
@@ -90,18 +78,8 @@ client.once('clientReady', async () => {
                 { name: 'action', description: 'Add, Remove, or List', type: 3, required: true, choices: [{ name: 'Add', value: 'add' }, { name: 'Remove', value: 'remove' }, { name: 'List', value: 'list' }] },
                 { name: 'word', description: 'The word', type: 3, required: false }
               ]
-            },
-            {
-              name: 'config',
-              description: 'Configure bot settings',
-              defaultMemberPermissions: PermissionFlagsBits.Administrator,
-              options: [
-                { name: 'setting', description: 'What to configure', type: 3, required: true, choices: [{ name: 'Embeds', value: 'embeds' }, { name: 'NSFW Warning', value: 'nsfwwarning' }, { name: 'Word Warning', value: 'wordwarning' }] },
-                { name: 'value', description: 'on/off or the text', type: 3, required: true }
-              ]
             }
           ]); 
-          console.log('✅ Registered Slash commands for main server!');
       }
   } catch (e) { console.error(e); }
 });
@@ -113,10 +91,6 @@ client.on('interactionCreate', async (interaction) => {
   const s = await getSettings(interaction.guild.id);
   if (!isAuthorized(interaction.member, s)) return interaction.reply({ content: 'No permission.', ephemeral: true });
 
-  if (interaction.commandName === 'config') {
-      await handleConfig(interaction, [interaction.options.getString('setting'), interaction.options.getString('value')], s, client); 
-  }
-  
   if (interaction.commandName === 'antinsfwcontent') {
       const state = interaction.options.getString('state');
       if (state === 'on' && s.antiNsfw) return interaction.reply({ content: '❌ AntiNSFW is already **ON**.', ephemeral: true });
@@ -128,18 +102,6 @@ client.on('interactionCreate', async (interaction) => {
       if (interaction.options.getString('duration')) s.nsfwDur = interaction.options.getString('duration');
       await s.save();
       return sendMessage(interaction, 'success', 'Updated', [`NSFW filtering is now \`${s.antiNsfw ? 'on' : 'off'}\` (Mode: \`${s.nsfwMode}\`)`], interaction.guild, client, s);
-  }
-
-  if (interaction.commandName === 'antinsfwmessages') {
-      const state = interaction.options.getString('state');
-      if (state === 'on' && s.termMessages) return interaction.reply({ content: '❌ Text filter is already **ON**.', ephemeral: true });
-      if (state === 'off' && !s.termMessages) return interaction.reply({ content: '❌ Text filter is already **OFF**.', ephemeral: true });
-
-      s.termMessages = (state === 'on');
-      if (interaction.options.getString('punishment')) s.msgPunish = interaction.options.getString('punishment');
-      if (interaction.options.getString('duration')) s.msgDur = interaction.options.getString('duration');
-      await s.save();
-      return sendMessage(interaction, 'success', 'Updated', [`Text filtering is now \`${s.termMessages ? 'on' : 'off'}\``], interaction.guild, client, s);
   }
 });
 
@@ -171,10 +133,7 @@ client.on('messageCreate', async (message) => {
         return;
       }
 
-      if (cmd === 'config') return handleConfig(message, args, s, client);
-      
       const nsfwAliases = ['antinsfwcontent', 'antinsfw', 'antinsfwbypass'];
-      const textAliases = ['antinsfwmessages', 'nonsfwtext'];
       const filterAliases = ['antibypassfilter', 'filter'];
 
       // --- CUSTOM FORMAT FOR ANTINSFW ---
@@ -230,48 +189,7 @@ ${arrow} **Punishment:** \`${s.nsfwPunish}\`
         return message.reply({ embeds: [embed] });
       }
 
-      // --- CUSTOM FORMAT FOR NOSFWTEXT ---
-      if (textAliases.includes(cmd)) {
-        const state = args[0]?.toLowerCase();
-        
-        const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
-
-        if (state !== 'on' && state !== 'off') {
-            const desc = `
-${arrow} **Punishment:** \`${s.msgPunish}\`
-${arrow} **Examples:**
-${arrow} \`$NoNsfwText on\`
-${arrow} \`$NoNsfwText on --punishment:mute\`
-            `;
-            const embed = await embeds.info('', desc, message.guild, client, 'General');
-            return message.reply({ embeds: [embed] });
-        }
-
-        if (state === 'on' && s.termMessages) return sendMessage(message, 'error', 'Already Enabled', ['Text filtering is already **ON**.'], message.guild, client, s);
-        if (state === 'off' && !s.termMessages) return sendMessage(message, 'error', 'Already Disabled', ['Text filtering is already **OFF**.'], message.guild, client, s);
-
-        s.termMessages = (state === 'on');
-        const punishFlag = args.find(a => a.startsWith('--punishment'));
-        if (punishFlag) s.msgPunish = punishFlag.split(':')[1]?.toLowerCase() || args[args.indexOf(punishFlag)+1]?.toLowerCase();
-        const durFlag = args.find(a => a.startsWith('--duration'));
-        if (durFlag) s.msgDur = durFlag.split(':')[1]?.toLowerCase() || args[args.indexOf(durFlag)+1]?.toLowerCase();
-        await s.save();
-
-        if (state === 'off') {
-            const desc = `Successfully turned **NoNsfwText** OFF`;
-            const embed = await embeds.success('', desc, message.guild, client, 'General');
-            return message.reply({ embeds: [embed] });
-        }
-
-        const desc = `
-Successfully turned **NoNsfwText** ON
-
-${arrow} **Punishment:** \`${s.msgPunish}\`
-        `;
-        const embed = await embeds.success('', desc, message.guild, client, 'General');
-        return message.reply({ embeds: [embed] });
-      }
-
+      // --- CUSTOM FORMAT FOR FILTER ---
       if (filterAliases.includes(cmd)) {
         const action = args[0]?.toLowerCase();
         const word = args[1]?.toLowerCase();
@@ -299,9 +217,8 @@ ${arrow} \`$Filter list\`
         if (action === 'add') {
             if (s.words.includes(word)) return sendMessage(message, 'error', 'Already Added', ['Word exists.'], message.guild, client, s);
             s.words.push(word);
-            s.termMessages = true; 
             await s.save();
-            return sendMessage(message, 'success', 'Word Added', [`Added \`${word}\` to the filter (Text Filtering turned ON).`], message.guild, client, s);
+            return sendMessage(message, 'success', 'Word Added', [`Added \`${word}\` to the filter.`], message.guild, client, s);
         }
         if (action === 'remove') {
             const index = s.words.indexOf(word);
@@ -315,20 +232,17 @@ ${arrow} \`$Filter list\`
       return; 
   }
 
-  // TEXT FILTER (Checks forwards)
-  if (s.termMessages) {
+  // TEXT FILTER (Always on if words exist)
+  if (s.words.length > 0) {
     let textToScan = message.content;
     if (message.messageSnapshots.size > 0) textToScan += " " + message.messageSnapshots.first().content;
 
     let violation = false;
-    
     if (s.words.some(w => checkViolation(textToScan, w))) violation = true;
 
     if (violation) {
         await message.delete().catch(() => {});
-        await applyPunishment(message.member, s.msgPunish, s.msgDur, 'Used a banned word.', message, client);
-        const customWarning = s.customMessages.wordWarning.replace('{user}', `<@${message.author.id}>`);
-        const warning = await sendMessage(message.channel, 'warning', 'Word Blocked', [customWarning, `**Action:** \`${s.msgPunish.toUpperCase()}\``], message.guild, client, s);
+        const warning = await sendMessage(message.channel, 'warning', 'Word Blocked', [`<@${message.author.id}> That word is not allowed.`], message.guild, client, s);
         setTimeout(() => warning.delete().catch(() => {}), 5000);
         return; 
     }
