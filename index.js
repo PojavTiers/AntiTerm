@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, PermissionFlagsBits, ComponentType, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, ComponentType, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder } = require('discord.js');
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegPath = require('ffmpeg-static');
 const ffprobePath = require('ffprobe-static').path;
@@ -98,14 +98,7 @@ client.once('clientReady', async () => {
   try { 
       await client.application.commands.set([
         { name: 'config', description: 'Open the interactive configuration menu' },
-        {
-          name: 'antinsfwcontent', description: 'Configure AI scanner',
-          options: [
-            { name: 'state', description: 'On or off', type: 3, required: true, choices: [{ name: 'On', value: 'on' }, { name: 'Off', value: 'off' }] },
-            { name: 'mode', description: 'Strictness level', type: 3, required: false, choices: [{ name: 'Basic', value: 'basic' }, { name: 'Moderate', value: 'moderate' }, { name: 'Advanced', value: 'advanced' }] },
-            { name: 'punishment', description: 'Punishment', type: 3, required: false, choices: [{ name: 'Delete', value: 'delete' }, { name: 'Mute', value: 'mute' }, { name: 'Kick', value: 'kick' }, { name: 'Ban', value: 'ban' }] }
-          ]
-        }
+        { name: 'help', description: 'View bot information' }
       ]); 
   } catch (e) { console.error(e); }
 });
@@ -129,9 +122,7 @@ client.on('guildCreate', async (guild) => {
 // --- INTERACTION HANDLER ---
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.guild) return;
-
   const s = await getSettings(interaction.guild.id);
-  const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
 
   // 1. BUTTON HANDLERS
   if (interaction.isButton()) {
@@ -177,11 +168,13 @@ client.on('interactionCreate', async (interaction) => {
       }
 
       if (interaction.customId === 'cfg_filter_list') {
+          const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
           const words = s.words.length > 0 ? s.words.map(w => `\`${w}\``).join(', ') : 'None';
           return interaction.reply({ content: `${arrow} **Filtered Words:** ${words}`, ephemeral: true });
       }
 
       if (interaction.customId === 'cfg_user_list') {
+          const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
           const users = s.allowedUsers.length > 0 ? s.allowedUsers.map(id => `<@${id}>`).join(', ') : 'None';
           return interaction.reply({ content: `${arrow} **Whitelisted Users:** ${users}`, ephemeral: true });
       }
@@ -280,6 +273,10 @@ client.on('interactionCreate', async (interaction) => {
           const menu = await generateConfigMenu(client, s, interaction.guild);
           return interaction.reply({ components: [menu], flags: MessageFlags.IsComponentsV2 });
       }
+      if (interaction.commandName === 'help') {
+          const helpMenu = await getHelpContainer(1, client, 2);
+          return interaction.reply({ components: [helpMenu], flags: MessageFlags.IsComponentsV2 });
+      }
   }
 });
 
@@ -292,106 +289,26 @@ client.on('messageCreate', async (message) => {
   const s = await getSettings(message.guild.id);
   const lowerContent = message.content.toLowerCase();
   
-  if (lowerContent.startsWith('$config')) {
+  if (lowerContent === '$config') {
       if (!isAuthorized(message.member, s)) return sendMessage(message, 'error', 'Access Denied', ['You do not have permission.'], message.guild, client, s);
       const menu = await generateConfigMenu(client, s, message.guild);
       return message.reply({ components: [menu], flags: MessageFlags.IsComponentsV2 });
   }
 
-  if (lowerContent.startsWith('$')) {
-      const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
+  if (lowerContent === '$help') {
+      const helpMenu = await getHelpContainer(1, client, 2);
+      const msg = await message.reply({ components: [helpMenu], flags: MessageFlags.IsComponentsV2 });
       
-      if (!isAuthorized(message.member, s)) {
-          return sendMessage(message, 'error', 'Access Denied', [`You do not have permission to use this.`], message.guild, client, s);
-      }
-      
-      const args = message.content.slice(1).trim().split(/ +/);
-      const cmd = args.shift().toLowerCase();
-
-      if (cmd === 'help') {
-        let currentPage = 1;
-        const helpMenu = await getHelpContainer(currentPage, client, 2);
-        const msg = await message.reply({ components: [helpMenu], flags: MessageFlags.IsComponentsV2 });
-        
-        const collector = msg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 60000 });
-        collector.on('collect', async i => {
-            if (i.user.id !== message.author.id) return i.reply({ content: "Not your menu.", ephemeral: true });
-            if (i.customId === 'delete_msg') return msg.delete().catch(()=>{});
-            if (i.customId === 'prev_page' && currentPage > 1) currentPage--;
-            if (i.customId === 'next_page' && currentPage < 2) currentPage++;
-            const newMenu = await getHelpContainer(currentPage, client, 2);
-            await i.update({ components: [newMenu], flags: MessageFlags.IsComponentsV2 });
-        });
-        return;
-      }
-
-      const nsfwAliases = ['antinsfwcontent', 'antinsfw', 'antinsfwbypass'];
-      const filterAliases = ['antibypassfilter', 'filter'];
-
-      if (nsfwAliases.includes(cmd)) {
-        const state = args[0]?.toLowerCase();
-        
-        if (state !== 'on' && state !== 'off') {
-            const desc = `${arrow} **Current Mode:** \`${s.nsfwMode.toUpperCase()}\`\n${arrow} **Punishment:** \`${s.nsfwPunish}\`\n${arrow} **Usage:** \`$AntiNsfw on\``;
-            const embed = await embeds.info('Configuration', desc, message.guild, client);
-            return message.reply({ embeds: [embed] });
-        }
-        
-        if (state === 'on' && s.antiNsfw) return sendMessage(message, 'error', 'System Alert', [`NSFW filtering is already **ON**.`], message.guild, client, s);
-        if (state === 'off' && !s.antiNsfw) return sendMessage(message, 'error', 'System Alert', [`NSFW filtering is already **OFF**.`], message.guild, client, s);
-
-        s.antiNsfw = (state === 'on');
-        const punishFlag = args.find(a => a.startsWith('--punishment'));
-        if (punishFlag) s.nsfwPunish = punishFlag.split(':')[1]?.toLowerCase() || args[args.indexOf(punishFlag)+1]?.toLowerCase();
-        const modeFlag = args.find(a => a.startsWith('--mode'));
-        if (modeFlag) {
-            const modeVal = modeFlag.split(':')[1]?.toLowerCase() || args[args.indexOf(modeFlag)+1]?.toLowerCase();
-            if (['basic', 'moderate', 'advanced'].includes(modeVal)) s.nsfwMode = modeVal;
-        }
-        await s.save();
-
-        if (state === 'off') {
-            const desc = `Successfully turned **AntiNSFWContent** OFF`;
-            const embed = await embeds.success('System Updated', desc, message.guild, client);
-            return message.reply({ embeds: [embed] });
-        }
-
-        const desc = `Successfully turned **AntiNSFWContent** ON\n\n${arrow} **Mode:** \`${s.nsfwMode.toUpperCase()}\`\n${arrow} **Punishment:** \`${s.nsfwPunish}\``;
-        const embed = await embeds.success('System Updated', desc, message.guild, client);
-        return message.reply({ embeds: [embed] });
-      }
-
-      if (filterAliases.includes(cmd)) {
-        const action = args[0]?.toLowerCase();
-        const word = args[1]?.toLowerCase();
-
-        if (action === 'list') {
-            if (s.words.length === 0) return sendMessage(message, 'warning', 'System Alert', ['No custom words.'], message.guild, client, s);
-            const desc = `**Current Filtered Words:**\n${arrow} \`${s.words.join('`, `')}\``;
-            const embed = await embeds.info('Configuration', desc, message.guild, client);
-            return message.reply({ embeds: [embed] });
-        }
-        if (!word) return sendMessage(message, 'error', 'Invalid Input', ['Provide a word.'], message.guild, client, s);
-        
-        if (action === 'add') {
-            if (s.words.includes(word)) return sendMessage(message, 'error', 'System Alert', ['Word exists.'], message.guild, client, s);
-            s.words.push(word);
-            await s.save();
-            const desc = `Successfully added \`${word}\` to the filter.`;
-            const embed = await embeds.success('Filter Updated', desc, message.guild, client);
-            return message.reply({ embeds: [embed] });
-        }
-        if (action === 'remove') {
-            const index = s.words.indexOf(word);
-            if (index === -1) return sendMessage(message, 'error', 'System Alert', ['Word not found.'], message.guild, client, s);
-            s.words.splice(index, 1);
-            await s.save();
-            const desc = `Successfully removed \`${word}\` from the filter.`;
-            const embed = await embeds.success('Filter Updated', desc, message.guild, client);
-            return message.reply({ embeds: [embed] });
-        }
-      }
-      return; 
+      const collector = msg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 60000 });
+      collector.on('collect', async i => {
+          if (i.user.id !== message.author.id) return i.reply({ content: "Not your menu.", ephemeral: true });
+          if (i.customId === 'delete_msg') return msg.delete().catch(()=>{});
+          if (i.customId === 'prev_page' && currentPage > 1) currentPage--;
+          if (i.customId === 'next_page' && currentPage < 2) currentPage++;
+          const newMenu = await getHelpContainer(currentPage, client, 2);
+          await i.update({ components: [newMenu], flags: MessageFlags.IsComponentsV2 });
+      });
+      return;
   }
 
   // TEXT FILTER
