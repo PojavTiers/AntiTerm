@@ -281,10 +281,8 @@ client.on('interactionCreate', async (interaction) => {
       // 4. SLASH COMMANDS
       if (interaction.isChatInputCommand()) {
           if (interaction.commandName === 'config') {
-              // Defer reply immediately to prevent timeout
               await interaction.deferReply();
               if (!isAuthorized(interaction.member, s)) return interaction.editReply({ content: '❌ No permission.' });
-              
               const menu = await generateConfigMenu(client, s, interaction.guild);
               return interaction.editReply({ components: [menu], flags: MessageFlags.IsComponentsV2 });
           }
@@ -296,11 +294,6 @@ client.on('interactionCreate', async (interaction) => {
       }
   } catch (error) {
       console.error("Interaction Error:", error);
-      if (interaction.replied || interaction.deferred) {
-          interaction.followUp({ content: '❌ An error occurred while processing this.', ephemeral: true }).catch(()=>{});
-      } else {
-          interaction.reply({ content: '❌ An error occurred while processing this.', ephemeral: true }).catch(()=>{});
-      }
   }
 });
 
@@ -314,6 +307,7 @@ client.on('messageCreate', async (message) => {
       const s = await getSettings(message.guild.id);
       const lowerContent = message.content.toLowerCase();
       
+      // --- THIS WAS MISSING, NOW IT OPENS THE MENU ---
       if (lowerContent === '$config') {
           if (!isAuthorized(message.member, s)) return sendMessage(message, 'error', 'Access Denied', ['You do not have permission.'], message.guild, client, s);
           const menu = await generateConfigMenu(client, s, message.guild);
