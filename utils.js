@@ -5,36 +5,45 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const SAFE_WORDS = ['nsfw', 'sex', 'sexual', 'assume', 'assassin', 'class', 'pass', 'bass', 'grass', 'mass', 'cocktail', 'peacock', 'shitake', 'hello', 'help'];
+const SAFE_WORDS = ['nsfw', 'sexual', 'assume', 'assassin', 'class', 'pass', 'bass', 'grass', 'mass', 'cocktail', 'peacock', 'shitake', 'hello', 'help'];
 
-// Normalises text: lowercase, removes invisible chars, converts leetspeak, strips numbers/symbols
+// 1. ADVANCED NORMALIZATION (Homoglyphs, Leetspeak, Invisible chars)
 function normalise(text) {
-  return text.toLowerCase().normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g, '')
-    .replace(/0/g, 'o').replace(/1/g, 'i').replace(/3/g, 'e').replace(/4/g, 'a').replace(/5/g, 's').replace(/7/g, 't').replace(/@/g, 'a').replace(/\$/g, 's')
-    .replace(/[^a-z]/g, ''); 
+    let cleaned = text.toLowerCase()
+        // Normalize Unicode (turns fancy fonts into standard letters)
+        .normalize('NFKC')
+        // Remove invisible zero-width characters
+        .replace(/[\u200B-\u200D\uFEFF]/g, '')
+        // Replace common Homoglyphs (Cyrillic/Greek look-alikes)
+        .replace(/[а]/g, 'a').replace(/[е]/g, 'e').replace(/[о]/g, 'o')
+        .replace(/[р]/g, 'p').replace(/[с]/g, 'c').replace(/[у]/g, 'y')
+        .replace(/[х]/g, 'x').replace(/[і]/g, 'i').replace(/[ј]/g, 'j')
+        // Replace Leetspeak
+        .replace(/0/g, 'o').replace(/1/g, 'i').replace(/3/g, 'e')
+        .replace(/4/g, 'a').replace(/5/g, 's').replace(/7/g, 't')
+        .replace(/@/g, 'a').replace(/\$/g, 's').replace(/!/g, 'i')
+        // Strip everything that isn't a letter
+        .replace(/[^a-z]/g, ''); 
+        
+    return cleaned;
 }
 
-// Collapses ANY repeating letter into a single letter
+// 2. COLLAPSE REPEATS ("shiiiiit" -> "shit")
 function collapseRepeats(text) {
     return text.replace(/(.)\1+/g, '$1');
 }
 
-// AI-like phonetic matching (Soundex)
+// 3. SOUNDEX (Phonetic matching)
 function getSoundex(str) {
     const a = str.toLowerCase().split('');
     const codes = { b: 1, f: 1, p: 1, v: 1, c: 2, g: 2, j: 2, k: 2, q: 2, s: 2, x: 2, z: 2, d: 3, t: 3, l: 4, m: 5, n: 5, r: 6 };
     let result = a.shift();
     let lastCode = codes[result] || '';
-    
     for (const char of a) {
         const code = codes[char] || '';
-        if (code && code !== lastCode) {
-            result += code;
-        }
+        if (code && code !== lastCode) result += code;
         lastCode = code;
     }
-    
-    // Pad with zeros to ensure it's 4 characters long
     return (result + '000').slice(0, 4);
 }
 
@@ -44,7 +53,7 @@ function isCloseEnough(input, target) {
     return levenshtein.get(input, target) <= 1; 
 }
 
-// The ultimate bypass-proof checker
+// 4. ULTIMATE VIOLATION CHECKER
 function checkViolation(text, bannedWord) {
     const cleanBanned = normalise(bannedWord);
     if (!cleanBanned || cleanBanned.length < 3) return false;
@@ -53,23 +62,21 @@ function checkViolation(text, bannedWord) {
     const collapsedBanned = collapseRepeats(cleanBanned);
     const fullCleanText = collapseRepeats(normalise(text));
 
-    // 1. Check for exact or collapsed match (teessstt -> test)
+    // Check A: Is the word hidden anywhere in the sentence? (e.g. "hellotestworld" -> finds "test")
     if (fullCleanText.includes(collapsedBanned)) return true;
 
-    // 2. Check for soundex match (AI-like phonetic check)
+    // Check B: Soundex (Phonetic) 
     const bannedSoundex = getSoundex(collapsedBanned);
+    if (getSoundex(fullCleanText).includes(bannedSoundex)) return true;
 
-    const words = text.split(/[\s,.!?]+/); 
-    for (const w of words) {
+    // Check C: Word-by-word typo checking (Levenshtein)
+    const rawWords = text.split(/[\s,.!?]+/); 
+    for (const w of rawWords) {
         if (!w) continue;
         const cleanW = collapseRepeats(normalise(w));
         if (!cleanW) continue;
         
-        // Check if it's a typo
         if (cleanW.length > 2 && isCloseEnough(cleanW, collapsedBanned)) return true;
-
-        // Check if it sounds exactly the same
-        if (cleanW.length > 2 && getSoundex(cleanW) === bannedSoundex) return true;
     }
 
     return false;
@@ -87,7 +94,7 @@ async function sendMessage(target, type, title, fields, guild, client, s) {
         const embed = await embeds[type](title, formattedDesc, guild, client);
         return target.reply({ embeds: [embed] });
     } else {
-        return target.reply({ content: `**${title}**\n${formattedDesc}` });
+        return target.reply({ content: `**${title || type.toUpperCase()}**\n${formattedDesc}` });
     }
 }
 
