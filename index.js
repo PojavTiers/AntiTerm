@@ -9,7 +9,7 @@ const os = require('os');
 
 const embeds = require('./embeds.js');
 const setActivity = require('./activity.js');
-const { connectDB, getSettings, getWhitelist, GlobalConfig } = require('./database.js');
+const { connectDB, getSettings, getWhitelist } = require('./database.js');
 const { sendMessage, isAuthorized, checkViolation, applyPunishment, getNsfwThreshold, createVideoCollage } = require('./utils.js');
 const { getHelpContainer } = require('./help.js');
 
@@ -125,7 +125,30 @@ client.on('interactionCreate', async (interaction) => {
   const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
 
   if (interaction.commandName === 'antinsfwcontent') {
-      // ... (Existing logic)
+      const state = interaction.options.getString('state');
+      if (state === 'on' && s.antiNsfw) return sendMessage(interaction, 'error', 'System Alert', [`NSFW filtering is already **ON**.`], interaction.guild, client, s);
+      if (state === 'off' && !s.antiNsfw) return sendMessage(interaction, 'error', 'System Alert', [`NSFW filtering is already **OFF**.`], interaction.guild, client, s);
+      
+      s.antiNsfw = (state === 'on');
+      if (interaction.options.getString('mode')) s.nsfwMode = interaction.options.getString('mode');
+      if (interaction.options.getString('punishment')) s.nsfwPunish = interaction.options.getString('punishment');
+      if (interaction.options.getString('duration')) s.nsfwDur = interaction.options.getString('duration');
+      await s.save();
+
+      if (state === 'off') {
+          const desc = `Successfully turned **AntiNSFWContent** OFF`;
+          const embed = await embeds.success('System Updated', desc, interaction.guild, client);
+          return interaction.reply({ embeds: [embed] });
+      }
+
+      const desc = `
+Successfully turned **AntiNSFWContent** ON
+
+${arrow} **Mode:** \`${s.nsfwMode.toUpperCase()}\`
+${arrow} **Punishment:** \`${s.nsfwPunish}\`
+      `;
+      const embed = await embeds.success('System Updated', desc, interaction.guild, client);
+      return interaction.reply({ embeds: [embed] });
   }
 });
 
@@ -139,14 +162,14 @@ client.on('messageCreate', async (message) => {
   const lowerContent = message.content.toLowerCase();
   
   // --- OWNER ONLY WHITELIST COMMANDS ---
-  if (message.content.startsWith('$whitelist') && message.author.id === OWNER_ID) {
+  if (lowerContent.startsWith('$whitelist') && message.author.id === OWNER_ID) {
       const args = message.content.slice(1).trim().split(/ +/);
       const cmd = args.shift().toLowerCase();
       const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
 
       if (cmd === 'whitelist_add') {
           const guildId = args[0];
-          if (!guildId) return sendMessage(message, 'error', 'Error', ['Provide a Guild ID.'], message.guild, client, s);
+          if (!guildId) return sendMessage(message, 'error', 'Invalid Input', ['Please provide a Guild ID.'], message.guild, client, s);
           
           if (whitelist.allowedGuilds.includes(guildId)) {
               return sendMessage(message, 'error', 'Already Added', ['That server is already whitelisted.'], message.guild, client, s);
@@ -155,12 +178,12 @@ client.on('messageCreate', async (message) => {
           whitelist.allowedGuilds.push(guildId);
           await whitelist.save();
           
-          return sendMessage(message, 'success', 'Whitelist Updated', [`Added \`${guildId}\` to the whitelist.`], message.guild, client, s);
+          return sendMessage(message, 'success', 'Whitelist Updated', [`Successfully added \`${guildId}\` to the whitelist.`], message.guild, client, s);
       }
 
       if (cmd === 'whitelist_remove') {
           const guildId = args[0];
-          if (!guildId) return sendMessage(message, 'error', 'Error', ['Provide a Guild ID.'], message.guild, client, s);
+          if (!guildId) return sendMessage(message, 'error', 'Invalid Input', ['Please provide a Guild ID.'], message.guild, client, s);
           
           const index = whitelist.allowedGuilds.indexOf(guildId);
           if (index === -1) {
@@ -170,11 +193,10 @@ client.on('messageCreate', async (message) => {
           whitelist.allowedGuilds.splice(index, 1);
           await whitelist.save();
           
-          // If the bot is in that server, leave it immediately
           const targetGuild = client.guilds.cache.get(guildId);
           if (targetGuild) await targetGuild.leave().catch(()=>{});
 
-          return sendMessage(message, 'success', 'Whitelist Updated', [`Removed \`${guildId}\` from the whitelist.`], message.guild, client, s);
+          return sendMessage(message, 'success', 'Whitelist Updated', [`Successfully removed \`${guildId}\` from the whitelist.`], message.guild, client, s);
       }
 
       if (cmd === 'whitelist_list') {
@@ -183,7 +205,7 @@ client.on('messageCreate', async (message) => {
           }
           
           const list = whitelist.allowedGuilds.map(id => `\`${id}\``).join(', ');
-          return sendMessage(message, 'info', 'Whitelisted Servers', [`${list}`], message.guild, client, s);
+          return sendMessage(message, 'info', 'Whitelisted Servers', [`${arrow} ${list}`], message.guild, client, s);
       }
       return;
   }
