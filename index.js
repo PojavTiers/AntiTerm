@@ -52,54 +52,53 @@ client.once('clientReady', async () => {
   console.log(`✅ ${client.user.tag} is online!`);
   setActivity(client);
   
+  // FORCE INSTANT SLASH COMMAND UPDATE FOR YOUR SERVER
   try { 
-      // 1. WIPE OUT OLD COMMANDS FROM ALL SERVERS
-      await client.application.commands.set([]);
-      console.log('Cleared old global commands.');
-
-      // 2. REGISTER NEW CLEAN COMMANDS
-      await client.application.commands.set([
-        {
-          name: 'antinsfwcontent',
-          description: 'Configure AI NSFW image/video scanner',
-          defaultMemberPermissions: PermissionFlagsBits.Administrator,
-          options: [
-            { name: 'state', description: 'On or off', type: 3, required: true, choices: [{ name: 'On', value: 'on' }, { name: 'Off', value: 'off' }] },
-            { name: 'mode', description: 'Strictness level', type: 3, required: false, choices: [{ name: 'Basic', value: 'basic' }, { name: 'Moderate', value: 'moderate' }, { name: 'Advanced', value: 'advanced' }] },
-            { name: 'punishment', description: 'Punishment', type: 3, required: false, choices: [{ name: 'Delete', value: 'delete' }, { name: 'Mute', value: 'mute' }, { name: 'Kick', value: 'kick' }, { name: 'Ban', value: 'ban' }] },
-            { name: 'duration', description: 'Mute duration', type: 3, required: false }
-          ]
-        },
-        {
-          name: 'antinsfwmessages',
-          description: 'Toggle the custom text filter on or off',
-          defaultMemberPermissions: PermissionFlagsBits.Administrator,
-          options: [
-            { name: 'state', description: 'On or off', type: 3, required: true, choices: [{ name: 'On', value: 'on' }, { name: 'Off', value: 'off' }] },
-            { name: 'punishment', description: 'Punishment', type: 3, required: false, choices: [{ name: 'Delete', value: 'delete' }, { name: 'Mute', value: 'mute' }, { name: 'Kick', value: 'kick' }, { name: 'Ban', value: 'ban' }] },
-            { name: 'duration', description: 'Mute duration', type: 3, required: false }
-          ]
-        },
-        {
-          name: 'antibypassfilter',
-          description: 'Manage custom server filter words',
-          defaultMemberPermissions: PermissionFlagsBits.Administrator,
-          options: [
-            { name: 'action', description: 'Add, Remove, or List', type: 3, required: true, choices: [{ name: 'Add', value: 'add' }, { name: 'Remove', value: 'remove' }, { name: 'List', value: 'list' }] },
-            { name: 'word', description: 'The word', type: 3, required: false }
-          ]
-        },
-        {
-          name: 'config',
-          description: 'Configure bot settings',
-          defaultMemberPermissions: PermissionFlagsBits.Administrator,
-          options: [
-            { name: 'setting', description: 'What to configure', type: 3, required: true, choices: [{ name: 'Embeds', value: 'embeds' }, { name: 'NSFW Warning', value: 'nsfwwarning' }, { name: 'Word Warning', value: 'wordwarning' }] },
-            { name: 'value', description: 'on/off or the text', type: 3, required: true }
-          ]
-        }
-      ]); 
-      console.log('Registered new clean commands.');
+      const mainGuild = client.guilds.cache.get('1500445119185293404');
+      if (mainGuild) {
+          await mainGuild.commands.set([
+            {
+              name: 'antinsfwcontent',
+              description: 'Configure AI NSFW image/video scanner',
+              defaultMemberPermissions: PermissionFlagsBits.Administrator,
+              options: [
+                { name: 'state', description: 'On or off', type: 3, required: true, choices: [{ name: 'On', value: 'on' }, { name: 'Off', value: 'off' }] },
+                { name: 'mode', description: 'Strictness level', type: 3, required: false, choices: [{ name: 'Basic', value: 'basic' }, { name: 'Moderate', value: 'moderate' }, { name: 'Advanced', value: 'advanced' }] },
+                { name: 'punishment', description: 'Punishment', type: 3, required: false, choices: [{ name: 'Delete', value: 'delete' }, { name: 'Mute', value: 'mute' }, { name: 'Kick', value: 'kick' }, { name: 'Ban', value: 'ban' }] },
+                { name: 'duration', description: 'Mute duration', type: 3, required: false }
+              ]
+            },
+            {
+              name: 'antinsfwmessages',
+              description: 'Toggle the custom text filter on or off',
+              defaultMemberPermissions: PermissionFlagsBits.Administrator,
+              options: [
+                { name: 'state', description: 'On or off', type: 3, required: true, choices: [{ name: 'On', value: 'on' }, { name: 'Off', value: 'off' }] },
+                { name: 'punishment', description: 'Punishment', type: 3, required: false, choices: [{ name: 'Delete', value: 'delete' }, { name: 'Mute', value: 'mute' }, { name: 'Kick', value: 'kick' }, { name: 'Ban', value: 'ban' }] },
+                { name: 'duration', description: 'Mute duration', type: 3, required: false }
+              ]
+            },
+            {
+              name: 'antibypassfilter',
+              description: 'Manage custom server filter words',
+              defaultMemberPermissions: PermissionFlagsBits.Administrator,
+              options: [
+                { name: 'action', description: 'Add, Remove, or List', type: 3, required: true, choices: [{ name: 'Add', value: 'add' }, { name: 'Remove', value: 'remove' }, { name: 'List', value: 'list' }] },
+                { name: 'word', description: 'The word', type: 3, required: false }
+              ]
+            },
+            {
+              name: 'config',
+              description: 'Configure bot settings',
+              defaultMemberPermissions: PermissionFlagsBits.Administrator,
+              options: [
+                { name: 'setting', description: 'What to configure', type: 3, required: true, choices: [{ name: 'Embeds', value: 'embeds' }, { name: 'NSFW Warning', value: 'nsfwwarning' }, { name: 'Word Warning', value: 'wordwarning' }] },
+                { name: 'value', description: 'on/off or the text', type: 3, required: true }
+              ]
+            }
+          ]); 
+          console.log('✅ Slash commands instantly updated for main server!');
+      }
   } catch (e) { console.error(e); }
 });
 
@@ -319,7 +318,6 @@ ${arrow} \`$Filter list\`
 
     let violation = false;
     
-    // ONLY CHECKS CUSTOM WORDS NOW
     if (s.words.some(w => checkViolation(textToScan, w))) violation = true;
 
     if (violation) {
