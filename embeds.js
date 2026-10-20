@@ -7,16 +7,9 @@ async function getEmoji(client, name, fallback) {
     try {
         const mainGuild = client.guilds.cache.get(MAIN_GUILD_ID);
         if (!mainGuild) return fallback;
-
         const emoji = mainGuild.emojis.cache.find(e => e.name.toLowerCase() === name.toLowerCase());
-        
-        if (emoji) {
-            return `<:${emoji.name}:${emoji.id}>`;
-        }
-        return fallback;
-    } catch (e) {
-        return fallback;
-    }
+        return emoji ? `<:${emoji.name}:${emoji.id}>` : fallback;
+    } catch (e) { return fallback; }
 }
 
 async function getButtonEmoji(client, name, fallback) {
@@ -24,20 +17,18 @@ async function getButtonEmoji(client, name, fallback) {
     try {
         const mainGuild = client.guilds.cache.get(MAIN_GUILD_ID);
         if (!mainGuild) return fallback;
-
         const emoji = mainGuild.emojis.cache.find(e => e.name.toLowerCase() === name.toLowerCase());
         return emoji ? emoji.id : fallback; 
-    } catch (e) {
-        return fallback;
-    }
+    } catch (e) { return fallback; }
 }
 
 async function createEmbed(type, title, description, client, category = 'General', page = null, totalPages = null) {
     let color = '#5865F2'; 
     let icon = ''; 
 
-    if (type === 'success') { color = '#57F287'; icon = await getEmoji(client, 'success', '✅'); }
-    if (type === 'error') { color = '#ED4245'; icon = await getEmoji(client, 'error', '❌'); }
+    // BRIGHT COLORS ADDED HERE
+    if (type === 'success') { color = '#00FF00'; icon = await getEmoji(client, 'success', '✅'); } // Lime Green
+    if (type === 'error') { color = '#FF0000'; icon = await getEmoji(client, 'error', '❌'); } // Bright Red
     if (type === 'warning') { color = '#FEE75C'; icon = await getEmoji(client, 'warning', '⚠️'); }
     if (type === 'info') { color = '#3498DB'; icon = await getEmoji(client, 'info', 'ℹ️'); }
     if (type === 'shield') { color = '#2B2D31'; icon = await getEmoji(client, 'shield', '🛡️'); }
@@ -47,7 +38,6 @@ async function createEmbed(type, title, description, client, category = 'General
         footerText = `AntiTerm Security | Page ${page} / ${totalPages} | ${category}`;
     }
 
-    // We add the icon directly to the description so it shows up like the custom layout
     const formattedDesc = icon ? `${icon} ${description}` : description;
 
     const embed = new EmbedBuilder()
