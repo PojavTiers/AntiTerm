@@ -17,7 +17,7 @@ async function getHelpContainer(page, client, totalPages) {
 **\`Config\`** - Toggle embeds and warnings.
 **\`Filter\`** - Add custom banned words.
 
-**Usage:** Type the command name or use \`/help\` to see examples.
+**Usage:** Type \`$<command>\` in chat, or use \`/help\` for slash commands.
 `;
     const p2 = `
 ### ${infoDisplay} Examples
