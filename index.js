@@ -92,8 +92,8 @@ client.on('interactionCreate', async (interaction) => {
 
   if (interaction.commandName === 'antinsfwcontent') {
       const state = interaction.options.getString('state');
-      if (state === 'on' && s.antiNsfw) return sendMessage(interaction, 'error', 'Already Enabled', ['NSFW filtering is already **ON**.'], interaction.guild, client, s);
-      if (state === 'off' && !s.antiNsfw) return sendMessage(interaction, 'error', 'Already Disabled', ['NSFW filtering is already **OFF**.'], interaction.guild, client, s);
+      if (state === 'on' && s.antiNsfw) return sendMessage(interaction, 'error', 'Already Enabled', [`${arrow} NSFW filtering is already **ON**.`], interaction.guild, client, s);
+      if (state === 'off' && !s.antiNsfw) return sendMessage(interaction, 'error', 'Already Disabled', [`${arrow} NSFW filtering is already **OFF**.`], interaction.guild, client, s);
       
       s.antiNsfw = (state === 'on');
       if (interaction.options.getString('mode')) s.nsfwMode = interaction.options.getString('mode');
@@ -124,11 +124,13 @@ client.on('messageCreate', async (message) => {
   const lowerContent = message.content.toLowerCase();
   
   if (lowerContent.startsWith('$')) {
-      if (!isAuthorized(message.member, s)) return sendMessage(message, 'error', 'Access Denied', ['You cannot use this.'], message.guild, client, s);
+      const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
+      if (!isAuthorized(message.member, s)) {
+          return sendMessage(message, 'error', 'Access Denied', [`${arrow} You do not have permission to use this.`], message.guild, client, s);
+      }
       
       const args = message.content.slice(1).trim().split(/ +/);
       const cmd = args.shift().toLowerCase();
-      const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
 
       if (cmd === 'help') {
         let currentPage = 1;
@@ -156,9 +158,9 @@ client.on('messageCreate', async (message) => {
         
         if (state !== 'on' && state !== 'off') {
             const desc = `
-${arrow} **Mode:** \`${s.nsfwMode.toUpperCase()}\`
+${arrow} **Current Mode:** \`${s.nsfwMode.toUpperCase()}\`
 ${arrow} **Punishment:** \`${s.nsfwPunish}\`
-${arrow} **Examples:**
+${arrow} **Usage Examples:**
 ${arrow} \`$AntiNsfw on --mode:advanced\`
 ${arrow} \`$AntiNsfw on --punishment:mute --duration:1h\`
             `;
@@ -166,8 +168,8 @@ ${arrow} \`$AntiNsfw on --punishment:mute --duration:1h\`
             return message.reply({ embeds: [embed] });
         }
         
-        if (state === 'on' && s.antiNsfw) return sendMessage(message, 'error', 'Already Enabled', ['NSFW filtering is already **ON**.'], message.guild, client, s);
-        if (state === 'off' && !s.antiNsfw) return sendMessage(message, 'error', 'Already Disabled', ['NSFW filtering is already **OFF**.'], message.guild, client, s);
+        if (state === 'on' && s.antiNsfw) return sendMessage(message, 'error', 'Already Enabled', [`${arrow} NSFW filtering is already **ON**.`], message.guild, client, s);
+        if (state === 'off' && !s.antiNsfw) return sendMessage(message, 'error', 'Already Disabled', [`${arrow} NSFW filtering is already **OFF**.`], message.guild, client, s);
 
         s.antiNsfw = (state === 'on');
         const punishFlag = args.find(a => a.startsWith('--punishment'));
@@ -204,8 +206,8 @@ ${arrow} **Punishment:** \`${s.nsfwPunish}\`
 
         if (action !== 'add' && action !== 'remove' && action !== 'list') {
             const desc = `
-${arrow} **Filtered Words:** ${s.words.length}
-${arrow} **Examples:**
+${arrow} **Total Filtered Words:** \`${s.words.length}\`
+${arrow} **Usage Examples:**
 ${arrow} \`$Filter add <word>\`
 ${arrow} \`$Filter remove <word>\`
 ${arrow} \`$Filter list\`
