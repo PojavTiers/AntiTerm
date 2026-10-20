@@ -52,8 +52,12 @@ client.once('clientReady', async () => {
   console.log(`✅ ${client.user.tag} is online!`);
   setActivity(client);
   
-  // FORCE INSTANT SLASH COMMAND UPDATE FOR YOUR SERVER
   try { 
+      // 1. Wipe Global Commands (Fixes the old ones lingering)
+      await client.application.commands.set([]);
+      console.log('✅ Cleared Global Commands');
+
+      // 2. Register New Commands for your specific server instantly
       const mainGuild = client.guilds.cache.get('1500445119185293404');
       if (mainGuild) {
           await mainGuild.commands.set([
@@ -97,7 +101,7 @@ client.once('clientReady', async () => {
               ]
             }
           ]); 
-          console.log('✅ Slash commands instantly updated for main server!');
+          console.log('✅ Registered Slash commands for main server!');
       }
   } catch (e) { console.error(e); }
 });
