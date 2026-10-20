@@ -10,7 +10,7 @@ const os = require('os');
 const embeds = require('./embeds.js');
 const setActivity = require('./activity.js');
 const { connectDB, getSettings } = require('./database.js');
-const { sendMessage, isAuthorized, checkViolation, applyPunishment, getNsfwThreshold, createVideoCollage, EXTREME_SLURS, MEDIUM_INSULTS, SAFE_WORDS } = require('./utils.js');
+const { sendMessage, isAuthorized, checkViolation, applyPunishment, getNsfwThreshold, createVideoCollage, SAFE_WORDS } = require('./utils.js');
 const { getHelpContainer } = require('./help.js');
 const { handleConfig } = require('./config.js');
 
@@ -25,47 +25,6 @@ const client = new Client({
     GatewayIntentBits.GuildMembers,
   ],
 });
-
-// THESE ARE NOW GLOBAL ARRAYS THAT GET POPULATED FROM THE WEB
-let EXTREME_SLURS_WEB = [];
-let MEDIUM_INSULTS_WEB = [];
-let WEB_PROFANITY_LIST = [];
-
-async function fetchWebProfanity() {
-    try {
-        // Fetching the JSON list that has severity levels built-in
-        const response = await fetch('https://cdn.jsdelivr.net/npm/@dsojevic/profanity-list@1.0.0/en.json');
-        const data = await response.json();
-
-        // Clear lists first
-        EXTREME_SLURS_WEB = [];
-        MEDIUM_INSULTS_WEB = [];
-        WEB_PROFANITY_LIST = [];
-
-        // Sort words based on their "severity" (1 to 4)
-        data.forEach(item => {
-            if (!item.match) return;
-            const word = item.match.toLowerCase();
-            const severity = item.severity || 3; // Default to 3 if missing
-
-            // Ignore safe words
-            if (SAFE_WORDS.includes(word)) return;
-
-            if (severity === 4) {
-                EXTREME_SLURS_WEB.push(word);
-            } else if (severity === 3) {
-                MEDIUM_INSULTS_WEB.push(word);
-            } else {
-                // Severity 1 and 2 go to the normal profanity list
-                WEB_PROFANITY_LIST.push(word);
-            }
-        });
-
-        console.log(`[DEBUG] Downloaded Web Lists: Extreme(${EXTREME_SLURS_WEB.length}), Medium(${MEDIUM_INSULTS_WEB.length}), Normal(${WEB_PROFANITY_LIST.length})`);
-    } catch (e) { 
-        console.error('[DEBUG] Failed to fetch profanity list:', e); 
-    }
-}
 
 function getTopFlag(scores) {
     if (!scores) return "nsfw";
@@ -92,7 +51,6 @@ function censorWord(word) {
 client.once('clientReady', async () => {
   console.log(`✅ ${client.user.tag} is online!`);
   setActivity(client);
-  await fetchWebProfanity();
   
   try { 
       await client.application.commands.set([
@@ -109,11 +67,10 @@ client.once('clientReady', async () => {
         },
         {
           name: 'antinsfwmessages',
-          description: 'Configure text filter and sensitivity',
+          description: 'Toggle the custom text filter on or off',
           defaultMemberPermissions: PermissionFlagsBits.Administrator,
           options: [
             { name: 'state', description: 'On or off', type: 3, required: true, choices: [{ name: 'On', value: 'on' }, { name: 'Off', value: 'off' }] },
-            { name: 'sensitivity', description: '0.1 to 0.9', type: 3, required: false },
             { name: 'punishment', description: 'Punishment', type: 3, required: false, choices: [{ name: 'Delete', value: 'delete' }, { name: 'Mute', value: 'mute' }, { name: 'Kick', value: 'kick' }, { name: 'Ban', value: 'ban' }] },
             { name: 'duration', description: 'Mute duration', type: 3, required: false }
           ]
@@ -170,7 +127,6 @@ client.on('interactionCreate', async (interaction) => {
       if (state === 'off' && !s.termMessages) return interaction.reply({ content: '❌ Text filter is already **OFF**.', ephemeral: true });
 
       s.termMessages = (state === 'on');
-      if (interaction.options.getString('sensitivity')) s.sensitivity = parseFloat(interaction.options.getString('sensitivity'));
       if (interaction.options.getString('punishment')) s.msgPunish = interaction.options.getString('punishment');
       if (interaction.options.getString('duration')) s.msgDur = interaction.options.getString('duration');
       await s.save();
@@ -273,11 +229,10 @@ ${arrow} **Punishment:** \`${s.nsfwPunish}\`
 
         if (state !== 'on' && state !== 'off') {
             const desc = `
-${arrow} **Sensitivity:** \`${s.sensitivity}\`
 ${arrow} **Punishment:** \`${s.msgPunish}\`
 ${arrow} **Examples:**
-${arrow} \`$NoNsfwText on 0.8\`
-${arrow} \`$NoNsfwText on 0.9 --punishment:mute\`
+${arrow} \`$NoNsfwText on\`
+${arrow} \`$NoNsfwText on --punishment:mute\`
             `;
             const embed = await embeds.info('', desc, message.guild, client, 'General');
             return message.reply({ embeds: [embed] });
@@ -287,8 +242,6 @@ ${arrow} \`$NoNsfwText on 0.9 --punishment:mute\`
         if (state === 'off' && !s.termMessages) return sendMessage(message, 'error', 'Already Disabled', ['Text filtering is already **OFF**.'], message.guild, client, s);
 
         s.termMessages = (state === 'on');
-        const sens = parseFloat(args[1]);
-        if (!isNaN(sens) && sens >= 0.1 && sens <= 0.9) s.sensitivity = sens;
         const punishFlag = args.find(a => a.startsWith('--punishment'));
         if (punishFlag) s.msgPunish = punishFlag.split(':')[1]?.toLowerCase() || args[args.indexOf(punishFlag)+1]?.toLowerCase();
         const durFlag = args.find(a => a.startsWith('--duration'));
@@ -304,7 +257,6 @@ ${arrow} \`$NoNsfwText on 0.9 --punishment:mute\`
         const desc = `
 Successfully turned **NoNsfwText** ON
 
-${arrow} **Sensitivity:** \`${s.sensitivity}\`
 ${arrow} **Punishment:** \`${s.msgPunish}\`
         `;
         const embed = await embeds.success('', desc, message.guild, client, 'General');
@@ -361,15 +313,8 @@ ${arrow} \`$Filter list\`
 
     let violation = false;
     
-    // Check custom words first
+    // ONLY CHECKS CUSTOM WORDS NOW
     if (s.words.some(w => checkViolation(textToScan, w))) violation = true;
-    
-    // If not custom, check the web lists based on sensitivity
-    if (!violation) {
-        if (s.sensitivity >= 0.1 && EXTREME_SLURS_WEB.some(w => checkViolation(textToScan, w))) violation = true;
-        else if (s.sensitivity >= 0.4 && MEDIUM_INSULTS_WEB.some(w => checkViolation(textToScan, w))) violation = true;
-        else if (s.sensitivity >= 0.7 && WEB_PROFANITY_LIST.some(w => checkViolation(textToScan, w))) violation = true;
-    }
 
     if (violation) {
         await message.delete().catch(() => {});
