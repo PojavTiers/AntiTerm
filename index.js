@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, PermissionFlagsBits, ComponentType, MessageFlags } = require('discord.js');
+const { Client, GatewayIntentBits, PermissionFlagsBits, ComponentType, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, TextDisplayBuilder, SeparatorBuilder } = require('discord.js');
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegPath = require('ffmpeg-static');
 const ffprobePath = require('ffprobe-static').path;
@@ -49,45 +49,82 @@ function censorWord(word) {
     return word;
 }
 
+// HELPER: Generate the Config Menu
+async function generateConfigMenu(client, s, guild) {
+    const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
+    
+    // Fetch custom status emojis
+    const onlineEmoji = await embeds.getEmoji(client, 'online_t', '🟢');
+    const offlineEmoji = await embeds.getEmoji(client, 'offline_t', '🔴');
+    const status = s.antiNsfw ? `${onlineEmoji} **ON**` : `${offlineEmoji} **OFF**`;
+    
+    // Top text
+    const textDisplay = new TextDisplayBuilder().setContent(`
+### ⚙️ AntiTerm Configuration
+${arrow} **AI Scanner:** ${status}
+${arrow} **Mode:** \`${s.nsfwMode.toUpperCase()}\`
+${arrow} **Punishment:** \`${s.nsfwPunish.toUpperCase()}\`
+${arrow} **Filtered Words:** \`${s.words.length}\`
+    `);
+
+    // Buttons
+    const row1 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('cfg_toggle_nsfw').setLabel('Toggle AI').setStyle(s.antiNsfw ? ButtonStyle.Danger : ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('cfg_mode').setLabel('Change Mode').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('cfg_punish').setLabel('Change Punishment').setStyle(ButtonStyle.Primary)
+    );
+
+    const row2 = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('cfg_filter_add').setLabel('Add Word').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('cfg_filter_remove').setLabel('Remove Word').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('cfg_filter_list').setLabel('View Words').setStyle(ButtonStyle.Secondary)
+    );
+
+    return new ContainerBuilder()
+        .addTextDisplayComponents(textDisplay)
+        .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(1))
+        .addActionRowComponents(row1)
+        .addActionRowComponents(row2);
+}
+
 client.once('clientReady', async () => {
   console.log(`✅ ${client.user.tag} is online!`);
   setActivity(client);
   
-  const mainGuildId = '1500445119185293404';
-
   try { 
-      await client.application.commands.set([]);
-      const mainGuild = client.guilds.cache.get(mainGuildId);
-      if (mainGuild) {
-          await mainGuild.commands.set([
-            {
-              name: 'antinsfwcontent',
-              description: 'Configure AI NSFW image/video scanner',
-              options: [
-                { name: 'state', description: 'On or off', type: 3, required: true, choices: [{ name: 'On', value: 'on' }, { name: 'Off', value: 'off' }] },
-                { name: 'mode', description: 'Strictness level', type: 3, required: false, choices: [{ name: 'Basic', value: 'basic' }, { name: 'Moderate', value: 'moderate' }, { name: 'Advanced', value: 'advanced' }] },
-                { name: 'punishment', description: 'Punishment', type: 3, required: false, choices: [{ name: 'Delete', value: 'delete' }, { name: 'Mute', value: 'mute' }, { name: 'Kick', value: 'kick' }, { name: 'Ban', value: 'ban' }] },
-                { name: 'duration', description: 'Mute duration', type: 3, required: false }
-              ]
-            },
-            {
-              name: 'antibypassfilter',
-              description: 'Manage custom server filter words',
-              options: [
-                { name: 'action', description: 'Add, Remove, or List', type: 3, required: true, choices: [{ name: 'Add', value: 'add' }, { name: 'Remove', value: 'remove' }, { name: 'List', value: 'list' }] },
-                { name: 'word', description: 'The word', type: 3, required: false }
-              ]
-            },
-            {
-              name: 'whitelistuser',
-              description: 'Manage users allowed to configure the bot (Owner Only)',
-              options: [
-                { name: 'action', description: 'Add, Remove, or List', type: 3, required: true, choices: [{ name: 'Add', value: 'add' }, { name: 'Remove', value: 'remove' }, { name: 'List', value: 'list' }] },
-                { name: 'user', description: 'The user to manage', type: 6, required: false }
-              ]
-            }
-          ]); 
-      }
+      await client.application.commands.set([
+        {
+          name: 'antinsfwcontent',
+          description: 'Configure AI NSFW image/video scanner',
+          options: [
+            { name: 'state', description: 'On or off', type: 3, required: true, choices: [{ name: 'On', value: 'on' }, { name: 'Off', value: 'off' }] },
+            { name: 'mode', description: 'Strictness level', type: 3, required: false, choices: [{ name: 'Basic', value: 'basic' }, { name: 'Moderate', value: 'moderate' }, { name: 'Advanced', value: 'advanced' }] },
+            { name: 'punishment', description: 'Punishment', type: 3, required: false, choices: [{ name: 'Delete', value: 'delete' }, { name: 'Mute', value: 'mute' }, { name: 'Kick', value: 'kick' }, { name: 'Ban', value: 'ban' }] },
+            { name: 'duration', description: 'Mute duration', type: 3, required: false }
+          ]
+        },
+        {
+          name: 'antibypassfilter',
+          description: 'Manage custom server filter words',
+          options: [
+            { name: 'action', description: 'Add, Remove, or List', type: 3, required: true, choices: [{ name: 'Add', value: 'add' }, { name: 'Remove', value: 'remove' }, { name: 'List', value: 'list' }] },
+            { name: 'word', description: 'The word', type: 3, required: false }
+          ]
+        },
+        {
+          name: 'whitelistuser',
+          description: 'Manage users allowed to configure the bot (Owner Only)',
+          options: [
+            { name: 'action', description: 'Add, Remove, or List', type: 3, required: true, choices: [{ name: 'Add', value: 'add' }, { name: 'Remove', value: 'remove' }, { name: 'List', value: 'list' }] },
+            { name: 'user', description: 'The user to manage', type: 6, required: false }
+          ]
+        },
+        {
+          name: 'config',
+          description: 'Open the interactive configuration menu'
+        }
+      ]); 
+      console.log('✅ Registered global slash commands.');
   } catch (e) { console.error(e); }
 });
 
@@ -108,16 +145,47 @@ client.on('guildCreate', async (guild) => {
 });
 
 client.on('interactionCreate', async (interaction) => {
+  if (interaction.isButton()) {
+      // CONFIG MENU BUTTON HANDLERS
+      const s = await getSettings(interaction.guild.id);
+      if (!isAuthorized(interaction.member, s)) return interaction.reply({ content: '❌ No permission.', ephemeral: true });
+
+      if (interaction.customId === 'cfg_toggle_nsfw') {
+          s.antiNsfw = !s.antiNsfw;
+          await s.save();
+          const menu = await generateConfigMenu(client, s, interaction.guild);
+          return interaction.update({ components: [menu], flags: MessageFlags.IsComponentsV2 });
+      }
+
+      if (interaction.customId === 'cfg_filter_list') {
+          const words = s.words.length > 0 ? s.words.map(w => `\`${w}\``).join(', ') : 'No words filtered.';
+          return interaction.reply({ content: `**Filtered Words:** ${words}`, ephemeral: true });
+      }
+
+      if (interaction.customId === 'cfg_filter_add') {
+          return interaction.reply({ content: 'Type `$Filter add <word>` in chat to add a word.', ephemeral: true });
+      }
+
+      if (interaction.customId === 'cfg_filter_remove') {
+          return interaction.reply({ content: 'Type `$Filter remove <word>` in chat to remove a word.', ephemeral: true });
+      }
+
+      if (interaction.customId === 'cfg_mode' || interaction.customId === 'cfg_punish') {
+          return interaction.reply({ content: 'Please use `/antinsfwcontent` or `$AntiNsfw` to change mode/punishment.', ephemeral: true });
+      }
+      return;
+  }
+
   if (!interaction.isChatInputCommand()) return;
   if (!interaction.guild) return interaction.reply({ content: 'Servers only.', ephemeral: true });
 
+  await interaction.deferReply().catch(() => {});
   const s = await getSettings(interaction.guild.id);
   const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
 
-  // SLASH COMMAND: /whitelistuser
   if (interaction.commandName === 'whitelistuser') {
       if (interaction.user.id !== interaction.guild.ownerId && interaction.user.id !== OWNER_ID) {
-          return interaction.reply({ content: '❌ Only the Server Owner can manage the whitelist.', ephemeral: true });
+          return interaction.editReply({ content: '❌ Only the Server Owner can manage the whitelist.' });
       }
       
       const action = interaction.options.getString('action');
@@ -147,8 +215,12 @@ client.on('interactionCreate', async (interaction) => {
       }
   }
 
-  // REGULAR SLASH COMMANDS
-  if (!isAuthorized(interaction.member, s)) return interaction.reply({ content: '❌ You do not have permission.', ephemeral: true });
+  if (!isAuthorized(interaction.member, s)) return interaction.editReply({ content: '❌ You do not have permission.' });
+
+  if (interaction.commandName === 'config') {
+      const menu = await generateConfigMenu(client, s, interaction.guild);
+      return interaction.editReply({ components: [menu], flags: MessageFlags.IsComponentsV2 });
+  }
 
   if (interaction.commandName === 'antinsfwcontent') {
       const state = interaction.options.getString('state');
@@ -164,12 +236,12 @@ client.on('interactionCreate', async (interaction) => {
       if (state === 'off') {
           const desc = `Successfully turned **AntiNSFWContent** OFF`;
           const embed = await embeds.success('System Updated', desc, interaction.guild, client);
-          return interaction.reply({ embeds: [embed] });
+          return interaction.editReply({ embeds: [embed] });
       }
 
       const desc = `Successfully turned **AntiNSFWContent** ON\n\n${arrow} **Mode:** \`${s.nsfwMode.toUpperCase()}\`\n${arrow} **Punishment:** \`${s.nsfwPunish}\``;
       const embed = await embeds.success('System Updated', desc, interaction.guild, client);
-      return interaction.reply({ embeds: [embed] });
+      return interaction.editReply({ embeds: [embed] });
   }
 });
 
@@ -182,16 +254,15 @@ client.on('messageCreate', async (message) => {
   const s = await getSettings(message.guild.id);
   const lowerContent = message.content.toLowerCase();
   
-  // PREFIX COMMAND: $whitelistUser
   if (lowerContent.startsWith('$whitelistuser')) {
       if (message.author.id !== message.guild.ownerId && message.author.id !== OWNER_ID) {
           return sendMessage(message, 'error', 'Access Denied', ['Only the Server Owner can manage the whitelist.'], message.guild, client, s);
       }
 
       const args = message.content.slice(1).trim().split(/ +/);
-      const cmd = args.shift().toLowerCase(); // This is "whitelistuser"
-      const action = args.shift()?.toLowerCase(); // This is "add", "remove", "list"
-      const targetId = args[0]?.replace(/[<@!>]/g, ''); // The ID
+      const cmd = args.shift().toLowerCase(); 
+      const action = args.shift()?.toLowerCase(); 
+      const targetId = args[0]?.replace(/[<@!>]/g, ''); 
       const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
 
       if (action === 'add') {
@@ -218,11 +289,9 @@ client.on('messageCreate', async (message) => {
           const list = s.allowedUsers.map(id => `<@${id}>`).join(', ');
           return sendMessage(message, 'info', 'Whitelisted Users', [`${arrow} ${list}`], message.guild, client, s);
       }
-      
-      return sendMessage(message, 'error', 'Invalid Usage', ['Use `$whitelistUser add/remove/list <@user>`'], message.guild, client, s);
+      return;
   }
 
-  // REGULAR PREFIX COMMANDS
   if (lowerContent.startsWith('$')) {
       const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
       
@@ -248,6 +317,11 @@ client.on('messageCreate', async (message) => {
             await i.update({ components: [newMenu], flags: MessageFlags.IsComponentsV2 });
         });
         return;
+      }
+
+      if (cmd === 'config') {
+          const menu = await generateConfigMenu(client, s, message.guild);
+          return message.reply({ components: [menu], flags: MessageFlags.IsComponentsV2 });
       }
 
       const nsfwAliases = ['antinsfwcontent', 'antinsfw', 'antinsfwbypass'];
