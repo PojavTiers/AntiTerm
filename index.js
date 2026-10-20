@@ -111,13 +111,16 @@ client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
   if (!interaction.guild) return interaction.reply({ content: 'Servers only.', ephemeral: true });
 
+  // DEFER THE REPLY TO PREVENT "DID NOT RESPOND" ERROR
+  await interaction.deferReply().catch(() => {});
+
   const s = await getSettings(interaction.guild.id);
   const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
 
   // SERVER OWNER ONLY: /whitelistuser
   if (interaction.commandName === 'whitelistuser') {
       if (interaction.user.id !== interaction.guild.ownerId && interaction.user.id !== OWNER_ID) {
-          return interaction.reply({ content: '❌ Only the Server Owner can manage the whitelist.', ephemeral: true });
+          return interaction.editReply({ content: '❌ Only the Server Owner can manage the whitelist.' });
       }
       
       const action = interaction.options.getString('action');
@@ -147,8 +150,8 @@ client.on('interactionCreate', async (interaction) => {
       }
   }
 
-  // REGULAR SLASH COMMANDS (Owner, Server Owner, Whitelisted)
-  if (!isAuthorized(interaction.member, s)) return interaction.reply({ content: '❌ You do not have permission.', ephemeral: true });
+  // REGULAR SLASH COMMANDS
+  if (!isAuthorized(interaction.member, s)) return interaction.editReply({ content: '❌ You do not have permission.' });
 
   if (interaction.commandName === 'antinsfwcontent') {
       const state = interaction.options.getString('state');
@@ -164,12 +167,12 @@ client.on('interactionCreate', async (interaction) => {
       if (state === 'off') {
           const desc = `Successfully turned **AntiNSFWContent** OFF`;
           const embed = await embeds.success('System Updated', desc, interaction.guild, client);
-          return interaction.reply({ embeds: [embed] });
+          return interaction.editReply({ embeds: [embed] });
       }
 
       const desc = `Successfully turned **AntiNSFWContent** ON\n\n${arrow} **Mode:** \`${s.nsfwMode.toUpperCase()}\`\n${arrow} **Punishment:** \`${s.nsfwPunish}\``;
       const embed = await embeds.success('System Updated', desc, interaction.guild, client);
-      return interaction.reply({ embeds: [embed] });
+      return interaction.editReply({ embeds: [embed] });
   }
 });
 
@@ -182,36 +185,35 @@ client.on('messageCreate', async (message) => {
   const s = await getSettings(message.guild.id);
   const lowerContent = message.content.toLowerCase();
   
-  // SERVER OWNER ONLY: $whitelist_user
+  // FIXED PREFIX COMMAND PARSER: $whitelist_user <action> <user>
   if (lowerContent.startsWith('$whitelist_user')) {
       if (message.author.id !== message.guild.ownerId && message.author.id !== OWNER_ID) {
           return sendMessage(message, 'error', 'Access Denied', ['Only the Server Owner can manage the whitelist.'], message.guild, client, s);
       }
 
-      const args = message.content.slice(1).trim().split(/ +/);
-      const cmd = args.shift().toLowerCase(); 
-      const action = args.shift()?.toLowerCase(); 
+      const args = message.content.split(/ +/);
+      // args[0] is "$whitelist_user"
+      const action = args[1]?.toLowerCase(); 
+      const targetId = args[2]?.replace(/[<@!>]/g, ''); // Remove mention formatting
       const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
 
       if (action === 'add') {
-          const target = message.mentions.users.first() || client.users.cache.get(args[0]);
-          if (!target) return sendMessage(message, 'error', 'Invalid Input', ['Mention a user or provide an ID.'], message.guild, client, s);
-          if (s.allowedUsers.includes(target.id)) return sendMessage(message, 'error', 'Already Added', ['User is already whitelisted.'], message.guild, client, s);
+          if (!targetId) return sendMessage(message, 'error', 'Invalid Input', ['Mention a user or provide an ID.'], message.guild, client, s);
+          if (s.allowedUsers.includes(targetId)) return sendMessage(message, 'error', 'Already Added', ['User is already whitelisted.'], message.guild, client, s);
           
-          s.allowedUsers.push(target.id);
+          s.allowedUsers.push(targetId);
           await s.save();
-          return sendMessage(message, 'success', 'User Added', [`Successfully whitelisted **${target.tag}**.`], message.guild, client, s);
+          return sendMessage(message, 'success', 'User Added', [`Successfully whitelisted <@${targetId}>.`], message.guild, client, s);
       }
 
       if (action === 'remove') {
-          const target = message.mentions.users.first() || client.users.cache.get(args[0]);
-          if (!target) return sendMessage(message, 'error', 'Invalid Input', ['Mention a user or provide an ID.'], message.guild, client, s);
-          const index = s.allowedUsers.indexOf(target.id);
+          if (!targetId) return sendMessage(message, 'error', 'Invalid Input', ['Mention a user or provide an ID.'], message.guild, client, s);
+          const index = s.allowedUsers.indexOf(targetId);
           if (index === -1) return sendMessage(message, 'error', 'Not Found', ['User is not whitelisted.'], message.guild, client, s);
           
           s.allowedUsers.splice(index, 1);
           await s.save();
-          return sendMessage(message, 'success', 'User Removed', [`Removed **${target.tag}** from the whitelist.`], message.guild, client, s);
+          return sendMessage(message, 'success', 'User Removed', [`Removed <@${targetId}> from the whitelist.`], message.guild, client, s);
       }
 
       if (action === 'list') {
@@ -222,7 +224,7 @@ client.on('messageCreate', async (message) => {
       return;
   }
 
-  // REGULAR PREFIX COMMANDS (Owner, Server Owner, Whitelisted)
+  // REGULAR PREFIX COMMANDS
   if (lowerContent.startsWith('$')) {
       const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
       
@@ -365,7 +367,7 @@ ${arrow} \`$Filter list\`
       return; 
   }
 
-  // TEXT FILTER (Always on if words exist)
+  // TEXT FILTER
   if (s.words.length > 0) {
     let textToScan = message.content;
     if (message.messageSnapshots.size > 0) textToScan += " " + message.messageSnapshots.first().content;
@@ -385,7 +387,7 @@ ${arrow} \`$Filter list\`
     }
   }
 
-  // AI SCANNER (Checks forwards)
+  // AI SCANNER
   if (s.antiNsfw) {
      const threshold = getNsfwThreshold(s.nsfwMode);
      let isUnsafe = false;
