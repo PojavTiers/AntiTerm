@@ -51,7 +51,6 @@ function censorWord(word) {
 
 // --- GENERATE CONFIG MENU ---
 async function generateConfigMenu(client, s, guild) {
-    // 1. Try to fetch custom emojis, fallback to text if it fails
     let onlineEmoji = '🟢';
     let offlineEmoji = '🔴';
     let arrow = '➜';
@@ -63,9 +62,7 @@ async function generateConfigMenu(client, s, guild) {
         if (fetchedOnline) onlineEmoji = fetchedOnline;
         if (fetchedOffline) offlineEmoji = fetchedOffline;
         if (fetchedArrow) arrow = fetchedArrow;
-    } catch (e) {
-        console.log("Emoji fetch failed, using fallbacks.");
-    }
+    } catch (e) {}
 
     const status = s.antiNsfw ? `${onlineEmoji} **ON**` : `${offlineEmoji} **OFF**`;
     
@@ -284,13 +281,17 @@ client.on('interactionCreate', async (interaction) => {
       // 4. SLASH COMMANDS
       if (interaction.isChatInputCommand()) {
           if (interaction.commandName === 'config') {
-              if (!isAuthorized(interaction.member, s)) return interaction.reply({ content: '❌ No permission.', ephemeral: true });
+              // Defer reply immediately to prevent timeout
+              await interaction.deferReply();
+              if (!isAuthorized(interaction.member, s)) return interaction.editReply({ content: '❌ No permission.' });
+              
               const menu = await generateConfigMenu(client, s, interaction.guild);
-              return interaction.reply({ components: [menu], flags: MessageFlags.IsComponentsV2 });
+              return interaction.editReply({ components: [menu], flags: MessageFlags.IsComponentsV2 });
           }
           if (interaction.commandName === 'help') {
+              await interaction.deferReply();
               const helpMenu = await getHelpContainer(1, client, 2);
-              return interaction.reply({ components: [helpMenu], flags: MessageFlags.IsComponentsV2 });
+              return interaction.editReply({ components: [helpMenu], flags: MessageFlags.IsComponentsV2 });
           }
       }
   } catch (error) {
