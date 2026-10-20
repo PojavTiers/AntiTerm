@@ -51,9 +51,8 @@ client.once('clientReady', async () => {
   console.log(`✅ ${client.user.tag} is online!`);
   setActivity(client);
   
-  // Get the list of allowed servers from Railway variables
   const allowedGuilds = process.env.ALLOWED_GUILDS ? process.env.ALLOWED_GUILDS.split(',') : [];
-  const mainGuildId = allowedGuilds[0] || '1500445119185293404'; // Uses the first ID for slash commands
+  const mainGuildId = allowedGuilds[0] || '1500445119185293404';
 
   try { 
       await client.application.commands.set([]);
@@ -86,17 +85,25 @@ client.once('clientReady', async () => {
 });
 
 // --- PRIVATE BOT SECURITY (ALLOWED GUILDS) ---
+const dmCooldowns = new Set();
+
 client.on('guildCreate', async (guild) => {
     const allowedGuilds = process.env.ALLOWED_GUILDS ? process.env.ALLOWED_GUILDS.split(',') : [];
     
-    // If the new server is NOT in the allowed list
     if (!allowedGuilds.includes(guild.id)) {
         console.log(`[SECURITY] Unauthorized join attempt in: ${guild.name} (${guild.id}). Leaving immediately.`);
         
         try {
             const owner = await guild.fetchOwner();
-            if (owner) {
+            
+            if (owner && !dmCooldowns.has(owner.id)) {
+                dmCooldowns.add(owner.id);
+                
                 await owner.send("This bot is private and cannot be added to your server. It has been removed.").catch(() => {});
+                
+                setTimeout(() => {
+                    dmCooldowns.delete(owner.id);
+                }, 5000);
             }
         } catch (e) {}
 
@@ -146,7 +153,6 @@ ${arrow} **Punishment:** \`${s.nsfwPunish}\`
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild) return;
   
-  // Ignore servers not in the allowed list
   const allowedGuilds = process.env.ALLOWED_GUILDS ? process.env.ALLOWED_GUILDS.split(',') : [];
   if (!allowedGuilds.includes(message.guild.id)) return;
 
