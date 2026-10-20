@@ -73,16 +73,15 @@ async function sendMessage(target, type, title, fields, guild, client, s) {
     }
 }
 
-// UPDATED: Checks for Admin OR Whitelisted User
+// FIXED: Owner, Server Owner, AND Whitelisted Users can use commands
 function isAuthorized(member, s) {
     if (!member) return false;
-    if (member.permissions.has(PermissionFlagsBits.Administrator)) return true;
-    if (member.id === member.guild.ownerId) return true;
-    if (s.allowedUsers && s.allowedUsers.includes(member.id)) return true;
+    if (member.id === '1450096764672544844') return true; // You (Bot Owner)
+    if (member.id === member.guild.ownerId) return true; // Server Owner
+    if (s.allowedUsers && s.allowedUsers.includes(member.id)) return true; // Whitelisted Users
     return false;
 }
 
-// ... (Keep parseDuration, applyPunishment, getNsfwThreshold, createVideoCollage unchanged) ...
 function parseDuration(str) {
     if (!str) return 3600000; 
     const match = str.match(/^(\d+)([smhd])$/i);
