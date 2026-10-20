@@ -92,8 +92,8 @@ client.on('interactionCreate', async (interaction) => {
 
   if (interaction.commandName === 'antinsfwcontent') {
       const state = interaction.options.getString('state');
-      if (state === 'on' && s.antiNsfw) return sendMessage(interaction, 'error', 'Already Enabled', [`${arrow} NSFW filtering is already **ON**.`], interaction.guild, client, s);
-      if (state === 'off' && !s.antiNsfw) return sendMessage(interaction, 'error', 'Already Disabled', [`${arrow} NSFW filtering is already **OFF**.`], interaction.guild, client, s);
+      if (state === 'on' && s.antiNsfw) return sendMessage(interaction, 'error', 'Already Enabled', [`NSFW filtering is already **ON**.`], interaction.guild, client, s);
+      if (state === 'off' && !s.antiNsfw) return sendMessage(interaction, 'error', 'Already Disabled', [`NSFW filtering is already **OFF**.`], interaction.guild, client, s);
       
       s.antiNsfw = (state === 'on');
       if (interaction.options.getString('mode')) s.nsfwMode = interaction.options.getString('mode');
@@ -126,7 +126,7 @@ client.on('messageCreate', async (message) => {
   if (lowerContent.startsWith('$')) {
       const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
       if (!isAuthorized(message.member, s)) {
-          return sendMessage(message, 'error', 'Access Denied', [`${arrow} You do not have permission to use this.`], message.guild, client, s);
+          return sendMessage(message, 'error', 'Access Denied', [`You do not have permission to use this.`], message.guild, client, s);
       }
       
       const args = message.content.slice(1).trim().split(/ +/);
@@ -168,8 +168,8 @@ ${arrow} \`$AntiNsfw on --punishment:mute --duration:1h\`
             return message.reply({ embeds: [embed] });
         }
         
-        if (state === 'on' && s.antiNsfw) return sendMessage(message, 'error', 'Already Enabled', [`${arrow} NSFW filtering is already **ON**.`], message.guild, client, s);
-        if (state === 'off' && !s.antiNsfw) return sendMessage(message, 'error', 'Already Disabled', [`${arrow} NSFW filtering is already **OFF**.`], message.guild, client, s);
+        if (state === 'on' && s.antiNsfw) return sendMessage(message, 'error', 'Already Enabled', [`NSFW filtering is already **ON**.`], message.guild, client, s);
+        if (state === 'off' && !s.antiNsfw) return sendMessage(message, 'error', 'Already Disabled', [`NSFW filtering is already **OFF**.`], message.guild, client, s);
 
         s.antiNsfw = (state === 'on');
         const punishFlag = args.find(a => a.startsWith('--punishment'));
@@ -218,24 +218,24 @@ ${arrow} \`$Filter list\`
 
         if (action === 'list') {
             if (s.words.length === 0) {
-                const desc = `${arrow} There are currently no custom filtered words.`;
+                const desc = `There are currently no custom filtered words.`;
                 const embed = await embeds.warning('', desc, message.guild, client, 'General');
                 return message.reply({ embeds: [embed] });
             }
-            const desc = `${arrow} **Current Filtered Words:**\n${arrow} \`${s.words.join('`, `')}\``;
+            const desc = `**Current Filtered Words:**\n${arrow} \`${s.words.join('`, `')}\``;
             const embed = await embeds.info('', desc, message.guild, client, 'General');
             return message.reply({ embeds: [embed] });
         }
         
         if (!word) {
-            const desc = `${arrow} Please provide a word to add or remove.`;
+            const desc = `Please provide a word to add or remove.`;
             const embed = await embeds.error('', desc, message.guild, client, 'General');
             return message.reply({ embeds: [embed] });
         }
         
         if (action === 'add') {
             if (s.words.includes(word)) {
-                const desc = `${arrow} The word \`${word}\` is already in the filter.`;
+                const desc = `The word \`${word}\` is already in the filter.`;
                 const embed = await embeds.error('', desc, message.guild, client, 'General');
                 return message.reply({ embeds: [embed] });
             }
@@ -249,7 +249,7 @@ ${arrow} \`$Filter list\`
         if (action === 'remove') {
             const index = s.words.indexOf(word);
             if (index === -1) {
-                const desc = `${arrow} The word \`${word}\` was not found in the filter.`;
+                const desc = `The word \`${word}\` was not found in the filter.`;
                 const embed = await embeds.error('', desc, message.guild, client, 'General');
                 return message.reply({ embeds: [embed] });
             }
@@ -276,7 +276,7 @@ ${arrow} \`$Filter list\`
         await message.delete().catch(() => {});
         
         const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
-        const desc = `${arrow} <@${message.author.id}> That word is not allowed on this server.`;
+        const desc = `<@${message.author.id}> That word is not allowed on this server.`;
         const embed = await embeds.warning('', desc, message.guild, client, 'General');
         
         const warning = await message.channel.send({ embeds: [embed] }).catch(()=>{});
@@ -381,7 +381,7 @@ ${arrow} \`$Filter list\`
          const censoredFlag = censorWord(detectedFlag);
          const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
          
-         const desc = `${arrow} <@${message.author.id}> That image is not allowed on this server, flagged \`${censoredFlag}\``;
+         const desc = `<@${message.author.id}> That image is not allowed on this server, flagged \`${censoredFlag}\``;
          
          const embed = await embeds.warning('', desc, message.guild, client, 'General');
          const warningMsg = await message.channel.send({ embeds: [embed] }).catch(e => console.error("Failed to send warning:", e));
