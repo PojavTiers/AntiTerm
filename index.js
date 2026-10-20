@@ -111,16 +111,13 @@ client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
   if (!interaction.guild) return interaction.reply({ content: 'Servers only.', ephemeral: true });
 
-  // DEFER THE REPLY TO PREVENT "DID NOT RESPOND" ERROR
-  await interaction.deferReply().catch(() => {});
-
   const s = await getSettings(interaction.guild.id);
   const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
 
   // SERVER OWNER ONLY: /whitelistuser
   if (interaction.commandName === 'whitelistuser') {
       if (interaction.user.id !== interaction.guild.ownerId && interaction.user.id !== OWNER_ID) {
-          return interaction.editReply({ content: '❌ Only the Server Owner can manage the whitelist.' });
+          return interaction.reply({ content: '❌ Only the Server Owner can manage the whitelist.', ephemeral: true });
       }
       
       const action = interaction.options.getString('action');
@@ -151,7 +148,7 @@ client.on('interactionCreate', async (interaction) => {
   }
 
   // REGULAR SLASH COMMANDS
-  if (!isAuthorized(interaction.member, s)) return interaction.editReply({ content: '❌ You do not have permission.' });
+  if (!isAuthorized(interaction.member, s)) return interaction.reply({ content: '❌ You do not have permission.', ephemeral: true });
 
   if (interaction.commandName === 'antinsfwcontent') {
       const state = interaction.options.getString('state');
@@ -167,12 +164,12 @@ client.on('interactionCreate', async (interaction) => {
       if (state === 'off') {
           const desc = `Successfully turned **AntiNSFWContent** OFF`;
           const embed = await embeds.success('System Updated', desc, interaction.guild, client);
-          return interaction.editReply({ embeds: [embed] });
+          return interaction.reply({ embeds: [embed] });
       }
 
       const desc = `Successfully turned **AntiNSFWContent** ON\n\n${arrow} **Mode:** \`${s.nsfwMode.toUpperCase()}\`\n${arrow} **Punishment:** \`${s.nsfwPunish}\``;
       const embed = await embeds.success('System Updated', desc, interaction.guild, client);
-      return interaction.editReply({ embeds: [embed] });
+      return interaction.reply({ embeds: [embed] });
   }
 });
 
@@ -192,9 +189,8 @@ client.on('messageCreate', async (message) => {
       }
 
       const args = message.content.split(/ +/);
-      // args[0] is "$whitelist_user"
-      const action = args[1]?.toLowerCase(); 
-      const targetId = args[2]?.replace(/[<@!>]/g, ''); // Remove mention formatting
+      const action = args[1]?.toLowerCase(); // Grabs "add", "remove", or "list"
+      const targetId = args[2]?.replace(/[<@!>]/g, ''); // Grabs the User ID
       const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
 
       if (action === 'add') {
