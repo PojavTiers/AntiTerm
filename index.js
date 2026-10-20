@@ -51,9 +51,13 @@ client.once('clientReady', async () => {
   console.log(`✅ ${client.user.tag} is online!`);
   setActivity(client);
   
+  // Get the list of allowed servers from Railway variables
+  const allowedGuilds = process.env.ALLOWED_GUILDS ? process.env.ALLOWED_GUILDS.split(',') : [];
+  const mainGuildId = allowedGuilds[0] || '1500445119185293404'; // Uses the first ID for slash commands
+
   try { 
       await client.application.commands.set([]);
-      const mainGuild = client.guilds.cache.get('1500445119185293404');
+      const mainGuild = client.guilds.cache.get(mainGuildId);
       if (mainGuild) {
           await mainGuild.commands.set([
             {
@@ -79,6 +83,27 @@ client.once('clientReady', async () => {
           ]); 
       }
   } catch (e) { console.error(e); }
+});
+
+// --- PRIVATE BOT SECURITY (ALLOWED GUILDS) ---
+client.on('guildCreate', async (guild) => {
+    const allowedGuilds = process.env.ALLOWED_GUILDS ? process.env.ALLOWED_GUILDS.split(',') : [];
+    
+    // If the new server is NOT in the allowed list
+    if (!allowedGuilds.includes(guild.id)) {
+        console.log(`[SECURITY] Unauthorized join attempt in: ${guild.name} (${guild.id}). Leaving immediately.`);
+        
+        try {
+            const owner = await guild.fetchOwner();
+            if (owner) {
+                await owner.send("This bot is private and cannot be added to your server. It has been removed.").catch(() => {});
+            }
+        } catch (e) {}
+
+        await guild.leave();
+    } else {
+        console.log(`[SECURITY] Successfully joined allowed server: ${guild.name}`);
+    }
 });
 
 client.on('interactionCreate', async (interaction) => {
@@ -120,6 +145,11 @@ ${arrow} **Punishment:** \`${s.nsfwPunish}\`
 
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild) return;
+  
+  // Ignore servers not in the allowed list
+  const allowedGuilds = process.env.ALLOWED_GUILDS ? process.env.ALLOWED_GUILDS.split(',') : [];
+  if (!allowedGuilds.includes(message.guild.id)) return;
+
   const s = await getSettings(message.guild.id);
   const lowerContent = message.content.toLowerCase();
   
