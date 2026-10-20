@@ -11,7 +11,7 @@ async function getHelpContainer(page, client, totalPages) {
 
 **${shieldDisplay} Setup & Moderation**
 **\`AntiNsfw\`** - Scan images/videos.
-**\`NoNsfwText\`** - Toggle custom text filter.
+**\`AntiNsfwMessages\`** - Toggle custom text filter.
 
 **${settingsDisplay} Configuration**
 **\`Config\`** - Toggle embeds and warnings.
@@ -26,7 +26,7 @@ async function getHelpContainer(page, client, totalPages) {
 \`$AntiNsfw on --mode:advanced --punishment:mute\`
 
 **To enable the text filter:**
-\`$NoNsfwText on --punishment:delete\`
+\`$AntiNsfwMessages on --punishment:delete\`
 
 **To add a custom word to the filter:**
 \`$Filter add badword\`
