@@ -5,18 +5,14 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const EXTREME_SLURS = ['nigger', 'neeger', 'ngr']; 
-const MEDIUM_INSULTS = ['asshole', 'bastard', 'retard', 'whore', 'slut'];
 const SAFE_WORDS = ['nsfw', 'sex', 'sexual', 'assume', 'assassin', 'class', 'pass', 'bass', 'grass', 'mass', 'cocktail', 'peacock', 'shitake', 'hello', 'help'];
 
-// Normalises text: lowercase, removes invisible chars, converts leetspeak, strips numbers/symbols
 function normalise(text) {
   return text.toLowerCase().normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g, '')
     .replace(/0/g, 'o').replace(/1/g, 'i').replace(/3/g, 'e').replace(/4/g, 'a').replace(/5/g, 's').replace(/7/g, 't').replace(/@/g, 'a').replace(/\$/g, 's')
     .replace(/[^a-z]/g, ''); 
 }
 
-// Collapses ANY repeating letter into a single letter
 function collapseRepeats(text) {
     return text.replace(/(.)\1+/g, '$1');
 }
@@ -27,22 +23,16 @@ function isCloseEnough(input, target) {
     return levenshtein.get(input, target) <= 1; 
 }
 
-// The ultimate bypass-proof checker
 function checkViolation(text, bannedWord) {
     const cleanBanned = normalise(bannedWord);
     if (!cleanBanned || cleanBanned.length < 3) return false;
     if (SAFE_WORDS.includes(cleanBanned)) return false;
 
-    // 1. Clean and collapse the banned word (e.g., "teeeest" -> "test")
     const collapsedBanned = collapseRepeats(cleanBanned);
-
-    // 2. Clean and collapse the entire message
     const fullCleanText = collapseRepeats(normalise(text));
 
-    // 3. Check if the collapsed banned word is hidden ANYWHERE inside the collapsed message
     if (fullCleanText.includes(collapsedBanned)) return true;
 
-    // 4. Fallback: Check word-by-word for typos (wrd, tst)
     const words = text.split(/[\s,.!?]+/); 
     for (const w of words) {
         if (!w) continue;
@@ -137,5 +127,5 @@ async function createVideoCollage(videoBuffer) {
 
 module.exports = {
     normalise, checkViolation, sendMessage, isAuthorized, applyPunishment, getNsfwThreshold, createVideoCollage,
-    EXTREME_SLURS, MEDIUM_INSULTS, SAFE_WORDS
+    SAFE_WORDS
 };
