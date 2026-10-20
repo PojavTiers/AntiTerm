@@ -114,7 +114,7 @@ client.on('interactionCreate', async (interaction) => {
   const s = await getSettings(interaction.guild.id);
   const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
 
-  // SERVER OWNER ONLY: /whitelistuser
+  // SLASH COMMAND: /whitelistuser
   if (interaction.commandName === 'whitelistuser') {
       if (interaction.user.id !== interaction.guild.ownerId && interaction.user.id !== OWNER_ID) {
           return interaction.reply({ content: '❌ Only the Server Owner can manage the whitelist.', ephemeral: true });
@@ -182,15 +182,16 @@ client.on('messageCreate', async (message) => {
   const s = await getSettings(message.guild.id);
   const lowerContent = message.content.toLowerCase();
   
-  // FIXED PREFIX COMMAND PARSER: $whitelist_user <action> <user>
-  if (lowerContent.startsWith('$whitelist_user')) {
+  // PREFIX COMMAND: $whitelistUser
+  if (lowerContent.startsWith('$whitelistuser')) {
       if (message.author.id !== message.guild.ownerId && message.author.id !== OWNER_ID) {
           return sendMessage(message, 'error', 'Access Denied', ['Only the Server Owner can manage the whitelist.'], message.guild, client, s);
       }
 
-      const args = message.content.split(/ +/);
-      const action = args[1]?.toLowerCase(); // Grabs "add", "remove", or "list"
-      const targetId = args[2]?.replace(/[<@!>]/g, ''); // Grabs the User ID
+      const args = message.content.slice(1).trim().split(/ +/);
+      const cmd = args.shift().toLowerCase(); // This is "whitelistuser"
+      const action = args.shift()?.toLowerCase(); // This is "add", "remove", "list"
+      const targetId = args[0]?.replace(/[<@!>]/g, ''); // The ID
       const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
 
       if (action === 'add') {
@@ -217,7 +218,8 @@ client.on('messageCreate', async (message) => {
           const list = s.allowedUsers.map(id => `<@${id}>`).join(', ');
           return sendMessage(message, 'info', 'Whitelisted Users', [`${arrow} ${list}`], message.guild, client, s);
       }
-      return;
+      
+      return sendMessage(message, 'error', 'Invalid Usage', ['Use `$whitelistUser add/remove/list <@user>`'], message.guild, client, s);
   }
 
   // REGULAR PREFIX COMMANDS
@@ -251,7 +253,6 @@ client.on('messageCreate', async (message) => {
       const nsfwAliases = ['antinsfwcontent', 'antinsfw', 'antinsfwbypass'];
       const filterAliases = ['antibypassfilter', 'filter'];
 
-      // --- CUSTOM FORMAT FOR ANTINSFW ---
       if (nsfwAliases.includes(cmd)) {
         const state = args[0]?.toLowerCase();
         
@@ -298,7 +299,6 @@ ${arrow} **Punishment:** \`${s.nsfwPunish}\`
         return message.reply({ embeds: [embed] });
       }
 
-      // --- CUSTOM FORMAT FOR FILTER ---
       if (filterAliases.includes(cmd)) {
         const action = args[0]?.toLowerCase();
         const word = args[1]?.toLowerCase();
