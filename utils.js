@@ -4,36 +4,24 @@ const ffmpeg = require('fluent-ffmpeg');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { PermissionFlagsBits } = require('discord.js');
 
-const SAFE_WORDS = ['nsfw', 'sexual', 'assume', 'assassin', 'class', 'pass', 'bass', 'grass', 'mass', 'cocktail', 'peacock', 'shitake', 'hello', 'help'];
+const SAFE_WORDS = ['nsfw', 'sex', 'sexual', 'assume', 'assassin', 'class', 'pass', 'bass', 'grass', 'mass', 'cocktail', 'peacock', 'shitake', 'hello', 'help'];
 
-// 1. ADVANCED NORMALIZATION (Homoglyphs, Leetspeak, Invisible chars)
 function normalise(text) {
-    let cleaned = text.toLowerCase()
-        // Normalize Unicode (turns fancy fonts into standard letters)
-        .normalize('NFKC')
-        // Remove invisible zero-width characters
-        .replace(/[\u200B-\u200D\uFEFF]/g, '')
-        // Replace common Homoglyphs (Cyrillic/Greek look-alikes)
+    let cleaned = text.toLowerCase().normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g, '')
         .replace(/[а]/g, 'a').replace(/[е]/g, 'e').replace(/[о]/g, 'o')
         .replace(/[р]/g, 'p').replace(/[с]/g, 'c').replace(/[у]/g, 'y')
         .replace(/[х]/g, 'x').replace(/[і]/g, 'i').replace(/[ј]/g, 'j')
-        // Replace Leetspeak
         .replace(/0/g, 'o').replace(/1/g, 'i').replace(/3/g, 'e')
         .replace(/4/g, 'a').replace(/5/g, 's').replace(/7/g, 't')
         .replace(/@/g, 'a').replace(/\$/g, 's').replace(/!/g, 'i')
-        // Strip everything that isn't a letter
         .replace(/[^a-z]/g, ''); 
-        
     return cleaned;
 }
 
-// 2. COLLAPSE REPEATS ("shiiiiit" -> "shit")
-function collapseRepeats(text) {
-    return text.replace(/(.)\1+/g, '$1');
-}
+function collapseRepeats(text) { return text.replace(/(.)\1+/g, '$1'); }
 
-// 3. SOUNDEX (Phonetic matching)
 function getSoundex(str) {
     const a = str.toLowerCase().split('');
     const codes = { b: 1, f: 1, p: 1, v: 1, c: 2, g: 2, j: 2, k: 2, q: 2, s: 2, x: 2, z: 2, d: 3, t: 3, l: 4, m: 5, n: 5, r: 6 };
@@ -53,7 +41,6 @@ function isCloseEnough(input, target) {
     return levenshtein.get(input, target) <= 1; 
 }
 
-// 4. ULTIMATE VIOLATION CHECKER
 function checkViolation(text, bannedWord) {
     const cleanBanned = normalise(bannedWord);
     if (!cleanBanned || cleanBanned.length < 3) return false;
@@ -62,34 +49,22 @@ function checkViolation(text, bannedWord) {
     const collapsedBanned = collapseRepeats(cleanBanned);
     const fullCleanText = collapseRepeats(normalise(text));
 
-    // Check A: Is the word hidden anywhere in the sentence? (e.g. "hellotestworld" -> finds "test")
     if (fullCleanText.includes(collapsedBanned)) return true;
-
-    // Check B: Soundex (Phonetic) 
     const bannedSoundex = getSoundex(collapsedBanned);
     if (getSoundex(fullCleanText).includes(bannedSoundex)) return true;
 
-    // Check C: Word-by-word typo checking (Levenshtein)
     const rawWords = text.split(/[\s,.!?]+/); 
     for (const w of rawWords) {
         if (!w) continue;
         const cleanW = collapseRepeats(normalise(w));
         if (!cleanW) continue;
-        
         if (cleanW.length > 2 && isCloseEnough(cleanW, collapsedBanned)) return true;
     }
-
     return false;
 }
 
 async function sendMessage(target, type, title, fields, guild, client, s) {
-    let formattedDesc = "";
-    if (Array.isArray(fields)) {
-        formattedDesc = fields.join('\n');
-    } else {
-        formattedDesc = fields;
-    }
-
+    let formattedDesc = Array.isArray(fields) ? fields.join('\n') : fields;
     if (s.useEmbeds) {
         const embed = await embeds[type](title, formattedDesc, guild, client);
         return target.reply({ embeds: [embed] });
@@ -98,14 +73,16 @@ async function sendMessage(target, type, title, fields, guild, client, s) {
     }
 }
 
+// UPDATED: Checks for Admin OR Whitelisted User
 function isAuthorized(member, s) {
     if (!member) return false;
-    if (member.permissions.has(require('discord.js').PermissionFlagsBits.Administrator)) return true;
+    if (member.permissions.has(PermissionFlagsBits.Administrator)) return true;
     if (member.id === member.guild.ownerId) return true;
     if (s.allowedUsers && s.allowedUsers.includes(member.id)) return true;
     return false;
 }
 
+// ... (Keep parseDuration, applyPunishment, getNsfwThreshold, createVideoCollage unchanged) ...
 function parseDuration(str) {
     if (!str) return 3600000; 
     const match = str.match(/^(\d+)([smhd])$/i);
@@ -125,9 +102,7 @@ async function applyPunishment(member, type, durationStr, reason, message, clien
         if (type === 'mute') await member.timeout(parseDuration(durationStr), reason);
         else if (type === 'kick') await member.kick(reason);
         else if (type === 'ban') await member.ban({ reason });
-    } catch (e) {
-        console.error(`Failed to ${type} user:`, e);
-    }
+    } catch (e) { console.error(e); }
 }
 
 function getNsfwThreshold(mode) {
@@ -140,29 +115,15 @@ async function createVideoCollage(videoBuffer) {
     const tempVideoPath = path.join(os.tmpdir(), `vid_${Date.now()}.mp4`);
     const outputPath = path.join(os.tmpdir(), `collage_${Date.now()}.jpg`);
     fs.writeFileSync(tempVideoPath, videoBuffer);
-
     try {
         await new Promise((resolve, reject) => {
-            ffmpeg(tempVideoPath)
-                .on('end', resolve)
-                .on('error', reject)
-                .outputOptions([
-                    '-vf', 'select=\'gte(n,1)\',scale=320:240,tile=2x3',
-                    '-frames:v', '1',
-                    '-q:v', '5'
-                ])
-                .save(outputPath);
+            ffmpeg(tempVideoPath).on('end', resolve).on('error', reject).outputOptions(['-vf', 'select=\'gte(n,1)\',scale=320:240,tile=2x3', '-frames:v', '1', '-q:v', '5']).save(outputPath);
         });
         return fs.readFileSync(outputPath);
-    } catch (err) {
-        return null;
-    } finally {
+    } catch (err) { return null; } finally {
         if (fs.existsSync(tempVideoPath)) fs.unlinkSync(tempVideoPath);
         if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
     }
 }
 
-module.exports = {
-    normalise, checkViolation, sendMessage, isAuthorized, applyPunishment, getNsfwThreshold, createVideoCollage,
-    SAFE_WORDS
-};
+module.exports = { normalise, checkViolation, sendMessage, isAuthorized, applyPunishment, getNsfwThreshold, createVideoCollage, SAFE_WORDS };
