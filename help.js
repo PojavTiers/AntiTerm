@@ -8,20 +8,27 @@ async function getHelpContainer(page, client, totalPages) {
     const p1 = `
 ### ${infoDisplay} AntiTerm Help
 
-**${shieldDisplay} Commands**
-**\`AntiNsfw\`** - Scan images and videos.
-**\`Filter\`** - Manage the text filter.
+**${shieldDisplay} Interactive Dashboard**
+All features are handled inside the **Config Menu**. 
+Type \`$config\` or \`/config\` to open it.
 
-**Usage:** Type \`$<command>\` in chat, or use \`/<command>\`.
+**Inside the Menu:**
+\`>\` **Toggle AI:** Turn the NSFW scanner on/off.
+\`>\` **Change Mode:** Basic, Moderate, or Advanced scanning.
+\`>\` **Change Punishment:** Delete, Mute, Kick, or Ban.
+\`>\` **Add/Remove Word:** Manage the unbypassable text filter.
+\`>\` **Add/Remove User:** Whitelist users to use the bot.
 `;
     const p2 = `
-### ${infoDisplay} Examples
+### ${infoDisplay} Mode Guide
 
-**AI Scanner:**
-\`$AntiNsfw on --mode:advanced --punishment:mute\`
+**AI Scanner Modes:**
+\`>\` \`Basic\` - Scans only for hardcore porn.
+\`>\` \`Moderate\` - Scans for porn, hentai, and explicit media.
+\`>\` \`Advanced\` - Strictly scans for anything suggestive (bikinis, lingerie).
 
 **Text Filter:**
-\`$Filter add badword\`
+The text filter is mathematically unbypassable. It detects homoglyphs (fake letters), Leetspeak (w0rd), repeating letters (wooord), and phonetic typos (werd).
 `;
 
     const currentDesc = page === 1 ? p1 : p2;
