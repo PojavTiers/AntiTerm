@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, ComponentType, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, ComponentType, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder, EmbedBuilder } = require('discord.js');
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegPath = require('ffmpeg-static');
 const ffprobePath = require('ffprobe-static').path;
@@ -49,7 +49,7 @@ function censorWord(word) {
     return word;
 }
 
-// --- GENERATE CONFIG MENU ---
+// --- GENERATE CONFIG MENU (Using Standard Embeds for Instant Load) ---
 async function generateConfigMenu(client, s, guild) {
     let onlineEmoji = '🟢';
     let offlineEmoji = '🔴';
@@ -66,14 +66,16 @@ async function generateConfigMenu(client, s, guild) {
 
     const status = s.antiNsfw ? `${onlineEmoji} **ON**` : `${offlineEmoji} **OFF**`;
     
-    const textDisplay = new TextDisplayBuilder().setContent(`
-### ⚙️ AntiTerm Configuration
+    const embed = new EmbedBuilder()
+        .setColor('#2B2D31')
+        .setTitle('⚙️ AntiTerm Configuration')
+        .setDescription(`
 ${arrow} **AI Scanner:** ${status}
 ${arrow} **Mode:** \`${s.nsfwMode.toUpperCase()}\`
 ${arrow} **Punishment:** \`${s.nsfwPunish.toUpperCase()}\`
 ${arrow} **Filtered Words:** \`${s.words.length}\`
 ${arrow} **Whitelisted Users:** \`${s.allowedUsers.length}\`
-    `);
+        `);
 
     const row1 = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('cfg_toggle_nsfw').setLabel('Toggle AI').setStyle(s.antiNsfw ? ButtonStyle.Danger : ButtonStyle.Success),
@@ -93,12 +95,7 @@ ${arrow} **Whitelisted Users:** \`${s.allowedUsers.length}\`
         new ButtonBuilder().setCustomId('cfg_user_list').setLabel('View Users').setStyle(ButtonStyle.Secondary)
     );
 
-    return new ContainerBuilder()
-        .addTextDisplayComponents(textDisplay)
-        .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(1))
-        .addActionRowComponents(row1)
-        .addActionRowComponents(row2)
-        .addActionRowComponents(row3);
+    return { embeds: [embed], components: [row1, row2, row3] };
 }
 
 client.once('clientReady', async () => {
@@ -144,7 +141,7 @@ client.on('interactionCreate', async (interaction) => {
               s.antiNsfw = !s.antiNsfw;
               await s.save();
               const menu = await generateConfigMenu(client, s, interaction.guild);
-              return interaction.update({ components: [menu], flags: MessageFlags.IsComponentsV2 });
+              return interaction.update(menu);
           }
 
           if (interaction.customId === 'cfg_filter_add') {
@@ -217,7 +214,7 @@ client.on('interactionCreate', async (interaction) => {
               s.nsfwMode = interaction.values[0];
               await s.save();
               const menu = await generateConfigMenu(client, s, interaction.guild);
-              await interaction.update({ components: [menu], flags: MessageFlags.IsComponentsV2 });
+              await interaction.update(menu);
               return interaction.followUp({ content: `✅ Mode changed to **${s.nsfwMode.toUpperCase()}**`, ephemeral: true });
           }
 
@@ -225,7 +222,7 @@ client.on('interactionCreate', async (interaction) => {
               s.nsfwPunish = interaction.values[0];
               await s.save();
               const menu = await generateConfigMenu(client, s, interaction.guild);
-              await interaction.update({ components: [menu], flags: MessageFlags.IsComponentsV2 });
+              await interaction.update(menu);
               return interaction.followUp({ content: `✅ Punishment changed to **${s.nsfwPunish.toUpperCase()}**`, ephemeral: true });
           }
       }
@@ -241,7 +238,7 @@ client.on('interactionCreate', async (interaction) => {
               s.words.push(word);
               await s.save();
               const menu = await generateConfigMenu(client, s, interaction.guild);
-              await interaction.update({ components: [menu], flags: MessageFlags.IsComponentsV2 });
+              await interaction.update(menu);
               return interaction.followUp({ content: `✅ Added \`${word}\` to filter.`, ephemeral: true });
           }
 
@@ -252,7 +249,7 @@ client.on('interactionCreate', async (interaction) => {
               s.words.splice(index, 1);
               await s.save();
               const menu = await generateConfigMenu(client, s, interaction.guild);
-              await interaction.update({ components: [menu], flags: MessageFlags.IsComponentsV2 });
+              await interaction.update(menu);
               return interaction.followUp({ content: `✅ Removed \`${word}\` from filter.`, ephemeral: true });
           }
 
@@ -262,7 +259,7 @@ client.on('interactionCreate', async (interaction) => {
               s.allowedUsers.push(userId);
               await s.save();
               const menu = await generateConfigMenu(client, s, interaction.guild);
-              await interaction.update({ components: [menu], flags: MessageFlags.IsComponentsV2 });
+              await interaction.update(menu);
               return interaction.followUp({ content: `✅ Whitelisted <@${userId}>.`, ephemeral: true });
           }
 
@@ -273,7 +270,7 @@ client.on('interactionCreate', async (interaction) => {
               s.allowedUsers.splice(index, 1);
               await s.save();
               const menu = await generateConfigMenu(client, s, interaction.guild);
-              await interaction.update({ components: [menu], flags: MessageFlags.IsComponentsV2 });
+              await interaction.update(menu);
               return interaction.followUp({ content: `✅ Removed <@${userId}> from whitelist.`, ephemeral: true });
           }
       }
@@ -284,7 +281,7 @@ client.on('interactionCreate', async (interaction) => {
               await interaction.deferReply();
               if (!isAuthorized(interaction.member, s)) return interaction.editReply({ content: '❌ No permission.' });
               const menu = await generateConfigMenu(client, s, interaction.guild);
-              return interaction.editReply({ components: [menu], flags: MessageFlags.IsComponentsV2 });
+              return interaction.editReply(menu);
           }
           if (interaction.commandName === 'help') {
               await interaction.deferReply();
@@ -307,11 +304,10 @@ client.on('messageCreate', async (message) => {
       const s = await getSettings(message.guild.id);
       const lowerContent = message.content.toLowerCase();
       
-      // --- THIS WAS MISSING, NOW IT OPENS THE MENU ---
       if (lowerContent === '$config') {
           if (!isAuthorized(message.member, s)) return sendMessage(message, 'error', 'Access Denied', ['You do not have permission.'], message.guild, client, s);
           const menu = await generateConfigMenu(client, s, message.guild);
-          return message.reply({ components: [menu], flags: MessageFlags.IsComponentsV2 });
+          return message.reply(menu);
       }
 
       if (lowerContent === '$help') {
