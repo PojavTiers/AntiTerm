@@ -3,23 +3,22 @@ const mongoose = require('mongoose');
 const settingsSchema = new mongoose.Schema({
     guildId: { type: String, required: true, unique: true },
     antiNsfw: { type: Boolean, default: false },
-    nsfwMode: { type: String, default: 'moderate' }, // NEW: basic, moderate, advanced
+    nsfwMode: { type: String, default: 'moderate' },
     nsfwPunish: { type: String, default: 'delete' },
     nsfwDur: { type: String, default: '1h' },
-    termMessages: { type: Boolean, default: false },
-    sensitivity: { type: Number, default: 0.5 },
-    msgPunish: { type: String, default: 'delete' },
-    msgDur: { type: String, default: '1h' },
     words: { type: [String], default: [] },
-    allowedUsers: { type: [String], default: [] },
-    useEmbeds: { type: Boolean, default: true },
-    customMessages: {
-        nsfwWarning: { type: String, default: "Image detected as **NSFW** and deleted the message." },
-        wordWarning: { type: String, default: "That word is not allowed." }
-    }
+    useEmbeds: { type: Boolean, default: true }
 });
 
 const GuildSettings = mongoose.model('GuildSettings', settingsSchema);
+
+// NEW: Global settings for the bot (whitelist)
+const globalSchema = new mongoose.Schema({
+    id: { type: String, default: 'global_config' },
+    allowedGuilds: { type: [String], default: [] }
+});
+const GlobalConfig = mongoose.model('GlobalConfig', globalSchema);
+
 const settingsCache = new Map();
 
 async function getSettings(guildId) {
@@ -28,6 +27,16 @@ async function getSettings(guildId) {
     if (!s) s = await GuildSettings.create({ guildId });
     settingsCache.set(guildId, s);
     return s;
+}
+
+async function getWhitelist() {
+    let config = await GlobalConfig.findOne({ id: 'global_config' });
+    if (!config) {
+        // If no whitelist exists, use the ENV variable as the starting point
+        const envGuilds = process.env.ALLOWED_GUILDS ? process.env.ALLOWED_GUILDS.split(',') : [];
+        config = await GlobalConfig.create({ id: 'global_config', allowedGuilds: envGuilds });
+    }
+    return config;
 }
 
 async function connectDB() {
@@ -44,4 +53,4 @@ async function connectDB() {
     }
 }
 
-module.exports = { getSettings, connectDB };
+module.exports = { getSettings, getWhitelist, GlobalConfig, connectDB };
