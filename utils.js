@@ -7,14 +7,35 @@ const os = require('os');
 
 const SAFE_WORDS = ['nsfw', 'sex', 'sexual', 'assume', 'assassin', 'class', 'pass', 'bass', 'grass', 'mass', 'cocktail', 'peacock', 'shitake', 'hello', 'help'];
 
+// Normalises text: lowercase, removes invisible chars, converts leetspeak, strips numbers/symbols
 function normalise(text) {
   return text.toLowerCase().normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g, '')
     .replace(/0/g, 'o').replace(/1/g, 'i').replace(/3/g, 'e').replace(/4/g, 'a').replace(/5/g, 's').replace(/7/g, 't').replace(/@/g, 'a').replace(/\$/g, 's')
     .replace(/[^a-z]/g, ''); 
 }
 
+// Collapses ANY repeating letter into a single letter
 function collapseRepeats(text) {
     return text.replace(/(.)\1+/g, '$1');
+}
+
+// AI-like phonetic matching (Soundex)
+function getSoundex(str) {
+    const a = str.toLowerCase().split('');
+    const codes = { b: 1, f: 1, p: 1, v: 1, c: 2, g: 2, j: 2, k: 2, q: 2, s: 2, x: 2, z: 2, d: 3, t: 3, l: 4, m: 5, n: 5, r: 6 };
+    let result = a.shift();
+    let lastCode = codes[result] || '';
+    
+    for (const char of a) {
+        const code = codes[char] || '';
+        if (code && code !== lastCode) {
+            result += code;
+        }
+        lastCode = code;
+    }
+    
+    // Pad with zeros to ensure it's 4 characters long
+    return (result + '000').slice(0, 4);
 }
 
 function isCloseEnough(input, target) {
@@ -23,6 +44,7 @@ function isCloseEnough(input, target) {
     return levenshtein.get(input, target) <= 1; 
 }
 
+// The ultimate bypass-proof checker
 function checkViolation(text, bannedWord) {
     const cleanBanned = normalise(bannedWord);
     if (!cleanBanned || cleanBanned.length < 3) return false;
@@ -31,7 +53,11 @@ function checkViolation(text, bannedWord) {
     const collapsedBanned = collapseRepeats(cleanBanned);
     const fullCleanText = collapseRepeats(normalise(text));
 
+    // 1. Check for exact or collapsed match (teessstt -> test)
     if (fullCleanText.includes(collapsedBanned)) return true;
+
+    // 2. Check for soundex match (AI-like phonetic check)
+    const bannedSoundex = getSoundex(collapsedBanned);
 
     const words = text.split(/[\s,.!?]+/); 
     for (const w of words) {
@@ -39,7 +65,11 @@ function checkViolation(text, bannedWord) {
         const cleanW = collapseRepeats(normalise(w));
         if (!cleanW) continue;
         
+        // Check if it's a typo
         if (cleanW.length > 2 && isCloseEnough(cleanW, collapsedBanned)) return true;
+
+        // Check if it sounds exactly the same
+        if (cleanW.length > 2 && getSoundex(cleanW) === bannedSoundex) return true;
     }
 
     return false;
