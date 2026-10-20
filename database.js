@@ -12,7 +12,6 @@ const settingsSchema = new mongoose.Schema({
 
 const GuildSettings = mongoose.model('GuildSettings', settingsSchema);
 
-// NEW: Global settings for the bot (whitelist)
 const globalSchema = new mongoose.Schema({
     id: { type: String, default: 'global_config' },
     allowedGuilds: { type: [String], default: [] }
@@ -32,10 +31,16 @@ async function getSettings(guildId) {
 async function getWhitelist() {
     let config = await GlobalConfig.findOne({ id: 'global_config' });
     if (!config) {
-        // If no whitelist exists, use the ENV variable as the starting point
-        const envGuilds = process.env.ALLOWED_GUILDS ? process.env.ALLOWED_GUILDS.split(',') : [];
-        config = await GlobalConfig.create({ id: 'global_config', allowedGuilds: envGuilds });
+        config = await GlobalConfig.create({ id: 'global_config', allowedGuilds: [] });
     }
+    
+    // FAIL-SAFE: Always ensure your main server is in the whitelist
+    const MAIN_SERVER_ID = '1500445119185293404'; 
+    if (!config.allowedGuilds.includes(MAIN_SERVER_ID)) {
+        config.allowedGuilds.push(MAIN_SERVER_ID);
+        await config.save();
+    }
+    
     return config;
 }
 
