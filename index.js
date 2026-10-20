@@ -49,32 +49,19 @@ function censorWord(word) {
     return word;
 }
 
-// --- GENERATE CONFIG MENU (Using Standard Embeds for Instant Load) ---
-async function generateConfigMenu(client, s, guild) {
-    let onlineEmoji = '🟢';
-    let offlineEmoji = '🔴';
-    let arrow = '➜';
-    
-    try {
-        const fetchedOnline = await embeds.getEmoji(client, 'online_t', '🟢');
-        const fetchedOffline = await embeds.getEmoji(client, 'offline_t', '🔴');
-        const fetchedArrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
-        if (fetchedOnline) onlineEmoji = fetchedOnline;
-        if (fetchedOffline) offlineEmoji = fetchedOffline;
-        if (fetchedArrow) arrow = fetchedArrow;
-    } catch (e) {}
-
-    const status = s.antiNsfw ? `${onlineEmoji} **ON**` : `${offlineEmoji} **OFF**`;
+// --- GENERATE CONFIG MENU ---
+async function generateConfigMenu(s) {
+    const status = s.antiNsfw ? `🟢 **ON**` : `🔴 **OFF**`;
     
     const embed = new EmbedBuilder()
         .setColor('#2B2D31')
         .setTitle('⚙️ AntiTerm Configuration')
         .setDescription(`
-${arrow} **AI Scanner:** ${status}
-${arrow} **Mode:** \`${s.nsfwMode.toUpperCase()}\`
-${arrow} **Punishment:** \`${s.nsfwPunish.toUpperCase()}\`
-${arrow} **Filtered Words:** \`${s.words.length}\`
-${arrow} **Whitelisted Users:** \`${s.allowedUsers.length}\`
+➜ **AI Scanner:** ${status}
+➜ **Mode:** \`${s.nsfwMode.toUpperCase()}\`
+➜ **Punishment:** \`${s.nsfwPunish.toUpperCase()}\`
+➜ **Filtered Words:** \`${s.words.length}\`
+➜ **Whitelisted Users:** \`${s.allowedUsers.length}\`
         `);
 
     const row1 = new ActionRowBuilder().addComponents(
@@ -140,7 +127,7 @@ client.on('interactionCreate', async (interaction) => {
           if (interaction.customId === 'cfg_toggle_nsfw') {
               s.antiNsfw = !s.antiNsfw;
               await s.save();
-              const menu = await generateConfigMenu(client, s, interaction.guild);
+              const menu = await generateConfigMenu(s);
               return interaction.update(menu);
           }
 
@@ -177,15 +164,13 @@ client.on('interactionCreate', async (interaction) => {
           }
 
           if (interaction.customId === 'cfg_filter_list') {
-              const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
               const words = s.words.length > 0 ? s.words.map(w => `\`${w}\``).join(', ') : 'None';
-              return interaction.reply({ content: `${arrow} **Filtered Words:** ${words}`, ephemeral: true });
+              return interaction.reply({ content: `➜ **Filtered Words:** ${words}`, ephemeral: true });
           }
 
           if (interaction.customId === 'cfg_user_list') {
-              const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
               const users = s.allowedUsers.length > 0 ? s.allowedUsers.map(id => `<@${id}>`).join(', ') : 'None';
-              return interaction.reply({ content: `${arrow} **Whitelisted Users:** ${users}`, ephemeral: true });
+              return interaction.reply({ content: `➜ **Whitelisted Users:** ${users}`, ephemeral: true });
           }
 
           if (interaction.customId === 'cfg_mode') {
@@ -213,7 +198,7 @@ client.on('interactionCreate', async (interaction) => {
           if (interaction.customId === 'select_mode') {
               s.nsfwMode = interaction.values[0];
               await s.save();
-              const menu = await generateConfigMenu(client, s, interaction.guild);
+              const menu = await generateConfigMenu(s);
               await interaction.update(menu);
               return interaction.followUp({ content: `✅ Mode changed to **${s.nsfwMode.toUpperCase()}**`, ephemeral: true });
           }
@@ -221,7 +206,7 @@ client.on('interactionCreate', async (interaction) => {
           if (interaction.customId === 'select_punish') {
               s.nsfwPunish = interaction.values[0];
               await s.save();
-              const menu = await generateConfigMenu(client, s, interaction.guild);
+              const menu = await generateConfigMenu(s);
               await interaction.update(menu);
               return interaction.followUp({ content: `✅ Punishment changed to **${s.nsfwPunish.toUpperCase()}**`, ephemeral: true });
           }
@@ -237,7 +222,7 @@ client.on('interactionCreate', async (interaction) => {
               if (s.words.includes(word)) return interaction.reply({ content: '❌ Word is already filtered.', ephemeral: true });
               s.words.push(word);
               await s.save();
-              const menu = await generateConfigMenu(client, s, interaction.guild);
+              const menu = await generateConfigMenu(s);
               await interaction.update(menu);
               return interaction.followUp({ content: `✅ Added \`${word}\` to filter.`, ephemeral: true });
           }
@@ -248,7 +233,7 @@ client.on('interactionCreate', async (interaction) => {
               if (index === -1) return interaction.reply({ content: '❌ Word not found in filter.', ephemeral: true });
               s.words.splice(index, 1);
               await s.save();
-              const menu = await generateConfigMenu(client, s, interaction.guild);
+              const menu = await generateConfigMenu(s);
               await interaction.update(menu);
               return interaction.followUp({ content: `✅ Removed \`${word}\` from filter.`, ephemeral: true });
           }
@@ -258,7 +243,7 @@ client.on('interactionCreate', async (interaction) => {
               if (s.allowedUsers.includes(userId)) return interaction.reply({ content: '❌ User is already whitelisted.', ephemeral: true });
               s.allowedUsers.push(userId);
               await s.save();
-              const menu = await generateConfigMenu(client, s, interaction.guild);
+              const menu = await generateConfigMenu(s);
               await interaction.update(menu);
               return interaction.followUp({ content: `✅ Whitelisted <@${userId}>.`, ephemeral: true });
           }
@@ -269,7 +254,7 @@ client.on('interactionCreate', async (interaction) => {
               if (index === -1) return interaction.reply({ content: '❌ User is not whitelisted.', ephemeral: true });
               s.allowedUsers.splice(index, 1);
               await s.save();
-              const menu = await generateConfigMenu(client, s, interaction.guild);
+              const menu = await generateConfigMenu(s);
               await interaction.update(menu);
               return interaction.followUp({ content: `✅ Removed <@${userId}> from whitelist.`, ephemeral: true });
           }
@@ -280,7 +265,7 @@ client.on('interactionCreate', async (interaction) => {
           if (interaction.commandName === 'config') {
               await interaction.deferReply();
               if (!isAuthorized(interaction.member, s)) return interaction.editReply({ content: '❌ No permission.' });
-              const menu = await generateConfigMenu(client, s, interaction.guild);
+              const menu = await generateConfigMenu(s);
               return interaction.editReply(menu);
           }
           if (interaction.commandName === 'help') {
@@ -306,7 +291,7 @@ client.on('messageCreate', async (message) => {
       
       if (lowerContent === '$config') {
           if (!isAuthorized(message.member, s)) return sendMessage(message, 'error', 'Access Denied', ['You do not have permission.'], message.guild, client, s);
-          const menu = await generateConfigMenu(client, s, message.guild);
+          const menu = await generateConfigMenu(s);
           return message.reply(menu);
       }
 
