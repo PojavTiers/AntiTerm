@@ -4,35 +4,24 @@ const embeds = require('./embeds.js');
 async function getHelpContainer(page, client, totalPages) {
     const infoDisplay = await embeds.getEmoji(client, 'info', 'ℹ️');
     const shieldDisplay = await embeds.getEmoji(client, 'shield', '🛡️');
-    const settingsDisplay = await embeds.getEmoji(client, 'settings', '⚙️');
     
     const p1 = `
 ### ${infoDisplay} AntiTerm Help
 
-**${shieldDisplay} Setup & Moderation**
-**\`AntiNsfw\`** - Scan images/videos.
-**\`AntiNsfwMessages\`** - Toggle custom text filter.
+**${shieldDisplay} Commands**
+**\`AntiNsfw\`** - Scan images and videos.
+**\`Filter\`** - Manage the text filter.
 
-**${settingsDisplay} Configuration**
-**\`Config\`** - Toggle embeds and warnings.
-**\`Filter\`** - Add custom banned words.
-
-**Usage:** Type \`$<command>\` in chat, or use \`/help\` for slash commands.
+**Usage:** Type \`$<command>\` in chat, or use \`/<command>\`.
 `;
     const p2 = `
 ### ${infoDisplay} Examples
 
-**To enable the AI image scanner:**
+**AI Scanner:**
 \`$AntiNsfw on --mode:advanced --punishment:mute\`
 
-**To enable the text filter:**
-\`$AntiNsfwMessages on --punishment:delete\`
-
-**To add a custom word to the filter:**
+**Text Filter:**
 \`$Filter add badword\`
-
-**To change a custom warning:**
-\`$Config wordwarning Watch your mouth {user}!\`
 `;
 
     const currentDesc = page === 1 ? p1 : p2;
