@@ -54,7 +54,7 @@ client.once('clientReady', async () => {
   setActivity(client);
   
   const whitelist = await getWhitelist();
-  const mainGuildId = whitelist.allowedGuilds[0] || '1500445119185293404';
+  const mainGuildId = '1500445119185293404'; // Hardcoded main server for commands
 
   try { 
       await client.application.commands.set([]);
@@ -100,12 +100,8 @@ client.on('guildCreate', async (guild) => {
             
             if (owner && !dmCooldowns.has(owner.id)) {
                 dmCooldowns.add(owner.id);
-                
                 await owner.send("This bot is private and cannot be added to your server. It has been removed.").catch(() => {});
-                
-                setTimeout(() => {
-                    dmCooldowns.delete(owner.id);
-                }, 5000);
+                setTimeout(() => dmCooldowns.delete(owner.id), 5000);
             }
         } catch (e) {}
 
@@ -156,13 +152,14 @@ client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild) return;
   
   const whitelist = await getWhitelist();
+  // Ignore servers not in the whitelist (but don't leave, the guildCreate event handles that)
   if (!whitelist.allowedGuilds.includes(message.guild.id)) return;
 
   const s = await getSettings(message.guild.id);
   const lowerContent = message.content.toLowerCase();
   
   // --- OWNER ONLY WHITELIST COMMANDS ---
-  if (lowerContent.startsWith('$whitelist') && message.author.id === OWNER_ID) {
+  if (message.author.id === OWNER_ID && lowerContent.startsWith('$whitelist')) {
       const args = message.content.slice(1).trim().split(/ +/);
       const cmd = args.shift().toLowerCase();
       const arrow = await embeds.getEmoji(client, 'arrow_right2', '➜');
