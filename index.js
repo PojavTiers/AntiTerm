@@ -53,6 +53,11 @@ client.once('clientReady', async () => {
   setActivity(client);
   
   try { 
+      // 1. WIPE OUT OLD COMMANDS FROM ALL SERVERS
+      await client.application.commands.set([]);
+      console.log('Cleared old global commands.');
+
+      // 2. REGISTER NEW CLEAN COMMANDS
       await client.application.commands.set([
         {
           name: 'antinsfwcontent',
@@ -94,6 +99,7 @@ client.once('clientReady', async () => {
           ]
         }
       ]); 
+      console.log('Registered new clean commands.');
   } catch (e) { console.error(e); }
 });
 
