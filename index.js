@@ -52,14 +52,16 @@ function censorWord(word) {
 // --- GENERATE CONFIG MENU ---
 function generateConfigMenu(s) {
     const status = s.antiNsfw ? `🟢 **ON**` : `🔴 **OFF**`;
+    const wordCount = s.words ? s.words.length : 0;
+    const userCount = s.allowedUsers ? s.allowedUsers.length : 0;
     
     const textDisplay = new TextDisplayBuilder().setContent(`
 ### ⚙️ AntiTerm Configuration
 ➜ **AI Scanner:** ${status}
 ➜ **Mode:** \`${s.nsfwMode.toUpperCase()}\`
 ➜ **Punishment:** \`${s.nsfwPunish.toUpperCase()}\`
-➜ **Filtered Words:** \`${s.words.length}\`
-➜ **Whitelisted Users:** \`${s.allowedUsers.length}\`
+➜ **Filtered Words:** \`${wordCount}\`
+➜ **Whitelisted Users:** \`${userCount}\`
     `);
 
     const row1 = new ActionRowBuilder().addComponents(
@@ -143,7 +145,7 @@ client.on('interactionCreate', async (interaction) => {
           }
 
           if (interaction.customId === 'cfg_filter_remove') {
-              if (s.words.length === 0) return interaction.reply({ content: '❌ No words to remove.', ephemeral: true });
+              if (!s.words || s.words.length === 0) return interaction.reply({ content: '❌ No words to remove.', ephemeral: true });
               const modal = new ModalBuilder().setCustomId('modal_filter_remove').setTitle('Remove Filtered Word');
               const input = new TextInputBuilder().setCustomId('word_input').setLabel('Word to remove').setStyle(TextInputStyle.Short).setRequired(true);
               modal.addComponents(new ActionRowBuilder().addComponents(input));
@@ -160,7 +162,7 @@ client.on('interactionCreate', async (interaction) => {
 
           if (interaction.customId === 'cfg_user_remove') {
               if (interaction.user.id !== interaction.guild.ownerId && interaction.user.id !== OWNER_ID) return interaction.reply({ content: '❌ Only the Server Owner can manage whitelisted users.', ephemeral: true });
-              if (s.allowedUsers.length === 0) return interaction.reply({ content: '❌ No users to remove.', ephemeral: true });
+              if (!s.allowedUsers || s.allowedUsers.length === 0) return interaction.reply({ content: '❌ No users to remove.', ephemeral: true });
               const modal = new ModalBuilder().setCustomId('modal_user_remove').setTitle('Remove Whitelisted User');
               const input = new TextInputBuilder().setCustomId('user_id').setLabel('User ID').setStyle(TextInputStyle.Short).setRequired(true);
               modal.addComponents(new ActionRowBuilder().addComponents(input));
@@ -168,12 +170,12 @@ client.on('interactionCreate', async (interaction) => {
           }
 
           if (interaction.customId === 'cfg_filter_list') {
-              const words = s.words.length > 0 ? s.words.map(w => `\`${w}\``).join(', ') : 'None';
+              const words = s.words && s.words.length > 0 ? s.words.map(w => `\`${w}\``).join(', ') : 'None';
               return interaction.reply({ content: `➜ **Filtered Words:** ${words}`, ephemeral: true });
           }
 
           if (interaction.customId === 'cfg_user_list') {
-              const users = s.allowedUsers.length > 0 ? s.allowedUsers.map(id => `<@${id}>`).join(', ') : 'None';
+              const users = s.allowedUsers && s.allowedUsers.length > 0 ? s.allowedUsers.map(id => `<@${id}>`).join(', ') : 'None';
               return interaction.reply({ content: `➜ **Whitelisted Users:** ${users}`, ephemeral: true });
           }
 
@@ -223,6 +225,7 @@ client.on('interactionCreate', async (interaction) => {
 
           if (interaction.customId === 'modal_filter_add') {
               const word = input.toLowerCase().trim();
+              if (!s.words) s.words = [];
               if (s.words.includes(word)) return interaction.reply({ content: '❌ Word is already filtered.', ephemeral: true });
               s.words.push(word);
               await s.save();
@@ -233,6 +236,7 @@ client.on('interactionCreate', async (interaction) => {
 
           if (interaction.customId === 'modal_filter_remove') {
               const word = input.toLowerCase().trim();
+              if (!s.words) s.words = [];
               const index = s.words.indexOf(word);
               if (index === -1) return interaction.reply({ content: '❌ Word not found in filter.', ephemeral: true });
               s.words.splice(index, 1);
@@ -244,6 +248,7 @@ client.on('interactionCreate', async (interaction) => {
 
           if (interaction.customId === 'modal_user_add') {
               const userId = input.replace(/[<@!>]/g, '').trim();
+              if (!s.allowedUsers) s.allowedUsers = [];
               if (s.allowedUsers.includes(userId)) return interaction.reply({ content: '❌ User is already whitelisted.', ephemeral: true });
               s.allowedUsers.push(userId);
               await s.save();
@@ -254,6 +259,7 @@ client.on('interactionCreate', async (interaction) => {
 
           if (interaction.customId === 'modal_user_remove') {
               const userId = input.replace(/[<@!>]/g, '').trim();
+              if (!s.allowedUsers) s.allowedUsers = [];
               const index = s.allowedUsers.indexOf(userId);
               if (index === -1) return interaction.reply({ content: '❌ User is not whitelisted.', ephemeral: true });
               s.allowedUsers.splice(index, 1);
@@ -314,7 +320,6 @@ client.on('messageCreate', async (message) => {
       }
 
       if (lowerContent === '$help') {
-          // ... (help logic remains exactly the same)
           const helpMenu = await getHelpContainer(1, client, 2);
           const msg = await message.reply({ components: [helpMenu], flags: MessageFlags.IsComponentsV2 });
           
@@ -332,7 +337,7 @@ client.on('messageCreate', async (message) => {
       }
 
       // TEXT FILTER
-      if (s.words.length > 0) {
+      if (s.words && s.words.length > 0) {
         let textToScan = message.content;
         if (message.messageSnapshots.size > 0) textToScan += " " + message.messageSnapshots.first().content;
 
