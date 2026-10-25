@@ -104,7 +104,7 @@ client.on('interactionCreate', async (interaction) => {
               const row2 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_filter_add').setLabel('Add Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_remove').setLabel('Remove Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_list').setLabel('View Words').setStyle(ButtonStyle.Secondary));
               const row3 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_user_add').setLabel('Add User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_remove').setLabel('Remove User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_list').setLabel('View Users').setStyle(ButtonStyle.Secondary));
 
-              return interaction.update({ embeds: [embed], components: [row1, row2, row3] });
+              return interaction.update({ embeds: [embed], components: [row1, row2, row3], flags: MessageFlags.IsComponentsV2 });
           }
 
           if (interaction.customId === 'cfg_filter_add') {
@@ -185,7 +185,7 @@ client.on('interactionCreate', async (interaction) => {
               const row1 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_toggle_nsfw').setLabel('Toggle AI').setStyle(s.antiNsfw ? ButtonStyle.Danger : ButtonStyle.Success), new ButtonBuilder().setCustomId('cfg_mode').setLabel('Change Mode').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('cfg_punish').setLabel('Change Punishment').setStyle(ButtonStyle.Primary));
               const row2 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_filter_add').setLabel('Add Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_remove').setLabel('Remove Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_list').setLabel('View Words').setStyle(ButtonStyle.Secondary));
               const row3 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_user_add').setLabel('Add User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_remove').setLabel('Remove User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_list').setLabel('View Users').setStyle(ButtonStyle.Secondary));
-              await interaction.update({ embeds: [embed], components: [row1, row2, row3] });
+              await interaction.update({ embeds: [embed], components: [row1, row2, row3], flags: MessageFlags.IsComponentsV2 });
               return interaction.followUp({ content: `✅ Mode changed to **${s.nsfwMode.toUpperCase()}**`, ephemeral: true });
           }
 
@@ -203,7 +203,7 @@ client.on('interactionCreate', async (interaction) => {
               const row1 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_toggle_nsfw').setLabel('Toggle AI').setStyle(s.antiNsfw ? ButtonStyle.Danger : ButtonStyle.Success), new ButtonBuilder().setCustomId('cfg_mode').setLabel('Change Mode').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('cfg_punish').setLabel('Change Punishment').setStyle(ButtonStyle.Primary));
               const row2 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_filter_add').setLabel('Add Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_remove').setLabel('Remove Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_list').setLabel('View Words').setStyle(ButtonStyle.Secondary));
               const row3 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_user_add').setLabel('Add User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_remove').setLabel('Remove User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_list').setLabel('View Users').setStyle(ButtonStyle.Secondary));
-              await interaction.update({ embeds: [embed], components: [row1, row2, row3] });
+              await interaction.update({ embeds: [embed], components: [row1, row2, row3], flags: MessageFlags.IsComponentsV2 });
               return interaction.followUp({ content: `✅ Punishment changed to **${s.nsfwPunish.toUpperCase()}**`, ephemeral: true });
           }
       }
@@ -229,7 +229,7 @@ client.on('interactionCreate', async (interaction) => {
               const row1 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_toggle_nsfw').setLabel('Toggle AI').setStyle(s.antiNsfw ? ButtonStyle.Danger : ButtonStyle.Success), new ButtonBuilder().setCustomId('cfg_mode').setLabel('Change Mode').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('cfg_punish').setLabel('Change Punishment').setStyle(ButtonStyle.Primary));
               const row2 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_filter_add').setLabel('Add Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_remove').setLabel('Remove Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_list').setLabel('View Words').setStyle(ButtonStyle.Secondary));
               const row3 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_user_add').setLabel('Add User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_remove').setLabel('Remove User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_list').setLabel('View Users').setStyle(ButtonStyle.Secondary));
-              await interaction.update({ embeds: [embed], components: [row1, row2, row3] });
+              await interaction.update({ embeds: [embed], components: [row1, row2, row3], flags: MessageFlags.IsComponentsV2 });
               return interaction.followUp({ content: `✅ Added \`${word}\` to filter.`, ephemeral: true });
           }
 
@@ -250,7 +250,7 @@ client.on('interactionCreate', async (interaction) => {
               const row1 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_toggle_nsfw').setLabel('Toggle AI').setStyle(s.antiNsfw ? ButtonStyle.Danger : ButtonStyle.Success), new ButtonBuilder().setCustomId('cfg_mode').setLabel('Change Mode').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('cfg_punish').setLabel('Change Punishment').setStyle(ButtonStyle.Primary));
               const row2 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_filter_add').setLabel('Add Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_remove').setLabel('Remove Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_list').setLabel('View Words').setStyle(ButtonStyle.Secondary));
               const row3 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_user_add').setLabel('Add User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_remove').setLabel('Remove User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_list').setLabel('View Users').setStyle(ButtonStyle.Secondary));
-              await interaction.update({ embeds: [embed], components: [row1, row2, row3] });
+              await interaction.update({ embeds: [embed], components: [row1, row2, row3], flags: MessageFlags.IsComponentsV2 });
               return interaction.followUp({ content: `✅ Removed \`${word}\` from filter.`, ephemeral: true });
           }
 
@@ -270,7 +270,7 @@ client.on('interactionCreate', async (interaction) => {
               const row1 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_toggle_nsfw').setLabel('Toggle AI').setStyle(s.antiNsfw ? ButtonStyle.Danger : ButtonStyle.Success), new ButtonBuilder().setCustomId('cfg_mode').setLabel('Change Mode').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('cfg_punish').setLabel('Change Punishment').setStyle(ButtonStyle.Primary));
               const row2 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_filter_add').setLabel('Add Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_remove').setLabel('Remove Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_list').setLabel('View Words').setStyle(ButtonStyle.Secondary));
               const row3 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_user_add').setLabel('Add User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_remove').setLabel('Remove User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_list').setLabel('View Users').setStyle(ButtonStyle.Secondary));
-              await interaction.update({ embeds: [embed], components: [row1, row2, row3] });
+              await interaction.update({ embeds: [embed], components: [row1, row2, row3], flags: MessageFlags.IsComponentsV2 });
               return interaction.followUp({ content: `✅ Whitelisted <@${userId}>.`, ephemeral: true });
           }
 
@@ -291,7 +291,7 @@ client.on('interactionCreate', async (interaction) => {
               const row1 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_toggle_nsfw').setLabel('Toggle AI').setStyle(s.antiNsfw ? ButtonStyle.Danger : ButtonStyle.Success), new ButtonBuilder().setCustomId('cfg_mode').setLabel('Change Mode').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('cfg_punish').setLabel('Change Punishment').setStyle(ButtonStyle.Primary));
               const row2 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_filter_add').setLabel('Add Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_remove').setLabel('Remove Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_list').setLabel('View Words').setStyle(ButtonStyle.Secondary));
               const row3 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_user_add').setLabel('Add User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_remove').setLabel('Remove User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_list').setLabel('View Users').setStyle(ButtonStyle.Secondary));
-              await interaction.update({ embeds: [embed], components: [row1, row2, row3] });
+              await interaction.update({ embeds: [embed], components: [row1, row2, row3], flags: MessageFlags.IsComponentsV2 });
               return interaction.followUp({ content: `✅ Removed <@${userId}> from whitelist.`, ephemeral: true });
           }
       }
@@ -312,7 +312,7 @@ client.on('interactionCreate', async (interaction) => {
               const row1 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_toggle_nsfw').setLabel('Toggle AI').setStyle(s.antiNsfw ? ButtonStyle.Danger : ButtonStyle.Success), new ButtonBuilder().setCustomId('cfg_mode').setLabel('Change Mode').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('cfg_punish').setLabel('Change Punishment').setStyle(ButtonStyle.Primary));
               const row2 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_filter_add').setLabel('Add Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_remove').setLabel('Remove Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_list').setLabel('View Words').setStyle(ButtonStyle.Secondary));
               const row3 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_user_add').setLabel('Add User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_remove').setLabel('Remove User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_list').setLabel('View Users').setStyle(ButtonStyle.Secondary));
-              return interaction.editReply({ embeds: [embed], components: [row1, row2, row3] });
+              return interaction.editReply({ embeds: [embed], components: [row1, row2, row3], flags: MessageFlags.IsComponentsV2 });
           }
           if (interaction.commandName === 'help') {
               await interaction.deferReply();
@@ -348,7 +348,7 @@ client.on('messageCreate', async (message) => {
           const row1 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_toggle_nsfw').setLabel('Toggle AI').setStyle(s.antiNsfw ? ButtonStyle.Danger : ButtonStyle.Success), new ButtonBuilder().setCustomId('cfg_mode').setLabel('Change Mode').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('cfg_punish').setLabel('Change Punishment').setStyle(ButtonStyle.Primary));
           const row2 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_filter_add').setLabel('Add Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_remove').setLabel('Remove Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_list').setLabel('View Words').setStyle(ButtonStyle.Secondary));
           const row3 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_user_add').setLabel('Add User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_remove').setLabel('Remove User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_list').setLabel('View Users').setStyle(ButtonStyle.Secondary));
-          return message.reply({ embeds: [embed], components: [row1, row2, row3] });
+          return message.reply({ embeds: [embed], components: [row1, row2, row3], flags: MessageFlags.IsComponentsV2 });
       }
 
       if (lowerContent === '$help') {
