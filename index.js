@@ -49,7 +49,7 @@ function censorWord(word) {
     return word;
 }
 
-// --- GENERATE CONFIG MENU (Using ContainerBuilder for identical styling to $help) ---
+// --- GENERATE CONFIG MENU ---
 async function generateConfigMenu(client, s, guild) {
     const settingsEmoji = await embeds.getEmoji(client, 'settings', '⚙️');
     const onlineEmoji = await embeds.getEmoji(client, 'online_t', '🟢');
