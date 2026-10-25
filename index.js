@@ -206,25 +206,25 @@ client.on('interactionCreate', async (interaction) => {
           }
       }
 
-      // 2. SELECT MENU HANDLERS
+      // 2. SELECT MENU HANDLERS (Fixed to update the message correctly)
       if (interaction.isStringSelectMenu()) {
           if (!isAuthorized(interaction.member, s)) return;
-          await interaction.deferUpdate();
           
           if (interaction.customId === 'select_mode') {
               s.nsfwMode = interaction.values[0];
               await s.save();
               const menu = await generateConfigMenu(client, s, interaction.guild);
-              await interaction.editReply({ components: [menu], flags: MessageFlags.IsComponentsV2 });
-              return interaction.followUp({ content: `✅ Mode changed to **${s.nsfwMode.toUpperCase()}**`, ephemeral: true });
+              // Use update instead of editReply for component interactions
+              await interaction.update({ components: [menu], flags: MessageFlags.IsComponentsV2 });
+              return;
           }
 
           if (interaction.customId === 'select_punish') {
               s.nsfwPunish = interaction.values[0];
               await s.save();
               const menu = await generateConfigMenu(client, s, interaction.guild);
-              await interaction.editReply({ components: [menu], flags: MessageFlags.IsComponentsV2 });
-              return interaction.followUp({ content: `✅ Punishment changed to **${s.nsfwPunish.toUpperCase()}**`, ephemeral: true });
+              await interaction.update({ components: [menu], flags: MessageFlags.IsComponentsV2 });
+              return;
           }
       }
 
@@ -343,7 +343,7 @@ client.on('messageCreate', async (message) => {
         }
       }
 
-      // AI SCANNER WITH LOGGING
+      // AI SCANNER
       if (s.antiNsfw) {
          const threshold = getNsfwThreshold(s.nsfwMode);
          let isUnsafe = false;
