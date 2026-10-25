@@ -49,42 +49,6 @@ function censorWord(word) {
     return word;
 }
 
-// --- GENERATE CONFIG MENU (100% Reliable, No Emoji Fetching) ---
-function generateConfigMenu(s) {
-    const status = s.antiNsfw ? `🟢 **ON**` : `🔴 **OFF**`;
-    
-    const embed = new EmbedBuilder()
-        .setColor('#2B2D31')
-        .setTitle('⚙️ AntiTerm Configuration')
-        .setDescription(`
-➜ **AI Scanner:** ${status}
-➜ **Mode:** \`${s.nsfwMode.toUpperCase()}\`
-➜ **Punishment:** \`${s.nsfwPunish.toUpperCase()}\`
-➜ **Filtered Words:** \`${s.words.length}\`
-➜ **Whitelisted Users:** \`${s.allowedUsers.length}\`
-        `);
-
-    const row1 = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('cfg_toggle_nsfw').setLabel('Toggle AI').setStyle(s.antiNsfw ? ButtonStyle.Danger : ButtonStyle.Success),
-        new ButtonBuilder().setCustomId('cfg_mode').setLabel('Change Mode').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('cfg_punish').setLabel('Change Punishment').setStyle(ButtonStyle.Primary)
-    );
-
-    const row2 = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('cfg_filter_add').setLabel('Add Word').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('cfg_filter_remove').setLabel('Remove Word').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('cfg_filter_list').setLabel('View Words').setStyle(ButtonStyle.Secondary)
-    );
-
-    const row3 = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('cfg_user_add').setLabel('Add User').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('cfg_user_remove').setLabel('Remove User').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('cfg_user_list').setLabel('View Users').setStyle(ButtonStyle.Secondary)
-    );
-
-    return { embeds: [embed], components: [row1, row2, row3] };
-}
-
 client.once('clientReady', async () => {
   console.log(`✅ ${client.user.tag} is online!`);
   setActivity(client);
@@ -127,8 +91,20 @@ client.on('interactionCreate', async (interaction) => {
           if (interaction.customId === 'cfg_toggle_nsfw') {
               s.antiNsfw = !s.antiNsfw;
               await s.save();
-              const menu = generateConfigMenu(s);
-              return interaction.update(menu);
+              
+              const status = s.antiNsfw ? `🟢 **ON**` : `🔴 **OFF**`;
+              const embed = new EmbedBuilder().setColor('#2B2D31').setTitle('⚙️ AntiTerm Configuration').setDescription(`
+➜ **AI Scanner:** ${status}
+➜ **Mode:** \`${s.nsfwMode.toUpperCase()}\`
+➜ **Punishment:** \`${s.nsfwPunish.toUpperCase()}\`
+➜ **Filtered Words:** \`${s.words.length}\`
+➜ **Whitelisted Users:** \`${s.allowedUsers.length}\`
+              `);
+              const row1 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_toggle_nsfw').setLabel('Toggle AI').setStyle(s.antiNsfw ? ButtonStyle.Danger : ButtonStyle.Success), new ButtonBuilder().setCustomId('cfg_mode').setLabel('Change Mode').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('cfg_punish').setLabel('Change Punishment').setStyle(ButtonStyle.Primary));
+              const row2 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_filter_add').setLabel('Add Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_remove').setLabel('Remove Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_list').setLabel('View Words').setStyle(ButtonStyle.Secondary));
+              const row3 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_user_add').setLabel('Add User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_remove').setLabel('Remove User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_list').setLabel('View Users').setStyle(ButtonStyle.Secondary));
+
+              return interaction.update({ embeds: [embed], components: [row1, row2, row3] });
           }
 
           if (interaction.customId === 'cfg_filter_add') {
@@ -198,16 +174,36 @@ client.on('interactionCreate', async (interaction) => {
           if (interaction.customId === 'select_mode') {
               s.nsfwMode = interaction.values[0];
               await s.save();
-              const menu = generateConfigMenu(s);
-              await interaction.update(menu);
+              const status = s.antiNsfw ? `🟢 **ON**` : `🔴 **OFF**`;
+              const embed = new EmbedBuilder().setColor('#2B2D31').setTitle('⚙️ AntiTerm Configuration').setDescription(`
+➜ **AI Scanner:** ${status}
+➜ **Mode:** \`${s.nsfwMode.toUpperCase()}\`
+➜ **Punishment:** \`${s.nsfwPunish.toUpperCase()}\`
+➜ **Filtered Words:** \`${s.words.length}\`
+➜ **Whitelisted Users:** \`${s.allowedUsers.length}\`
+              `);
+              const row1 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_toggle_nsfw').setLabel('Toggle AI').setStyle(s.antiNsfw ? ButtonStyle.Danger : ButtonStyle.Success), new ButtonBuilder().setCustomId('cfg_mode').setLabel('Change Mode').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('cfg_punish').setLabel('Change Punishment').setStyle(ButtonStyle.Primary));
+              const row2 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_filter_add').setLabel('Add Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_remove').setLabel('Remove Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_list').setLabel('View Words').setStyle(ButtonStyle.Secondary));
+              const row3 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_user_add').setLabel('Add User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_remove').setLabel('Remove User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_list').setLabel('View Users').setStyle(ButtonStyle.Secondary));
+              await interaction.update({ embeds: [embed], components: [row1, row2, row3] });
               return interaction.followUp({ content: `✅ Mode changed to **${s.nsfwMode.toUpperCase()}**`, ephemeral: true });
           }
 
           if (interaction.customId === 'select_punish') {
               s.nsfwPunish = interaction.values[0];
               await s.save();
-              const menu = generateConfigMenu(s);
-              await interaction.update(menu);
+              const status = s.antiNsfw ? `🟢 **ON**` : `🔴 **OFF**`;
+              const embed = new EmbedBuilder().setColor('#2B2D31').setTitle('⚙️ AntiTerm Configuration').setDescription(`
+➜ **AI Scanner:** ${status}
+➜ **Mode:** \`${s.nsfwMode.toUpperCase()}\`
+➜ **Punishment:** \`${s.nsfwPunish.toUpperCase()}\`
+➜ **Filtered Words:** \`${s.words.length}\`
+➜ **Whitelisted Users:** \`${s.allowedUsers.length}\`
+              `);
+              const row1 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_toggle_nsfw').setLabel('Toggle AI').setStyle(s.antiNsfw ? ButtonStyle.Danger : ButtonStyle.Success), new ButtonBuilder().setCustomId('cfg_mode').setLabel('Change Mode').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('cfg_punish').setLabel('Change Punishment').setStyle(ButtonStyle.Primary));
+              const row2 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_filter_add').setLabel('Add Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_remove').setLabel('Remove Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_list').setLabel('View Words').setStyle(ButtonStyle.Secondary));
+              const row3 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_user_add').setLabel('Add User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_remove').setLabel('Remove User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_list').setLabel('View Users').setStyle(ButtonStyle.Secondary));
+              await interaction.update({ embeds: [embed], components: [row1, row2, row3] });
               return interaction.followUp({ content: `✅ Punishment changed to **${s.nsfwPunish.toUpperCase()}**`, ephemeral: true });
           }
       }
@@ -222,8 +218,18 @@ client.on('interactionCreate', async (interaction) => {
               if (s.words.includes(word)) return interaction.reply({ content: '❌ Word is already filtered.', ephemeral: true });
               s.words.push(word);
               await s.save();
-              const menu = generateConfigMenu(s);
-              await interaction.update(menu);
+              const status = s.antiNsfw ? `🟢 **ON**` : `🔴 **OFF**`;
+              const embed = new EmbedBuilder().setColor('#2B2D31').setTitle('⚙️ AntiTerm Configuration').setDescription(`
+➜ **AI Scanner:** ${status}
+➜ **Mode:** \`${s.nsfwMode.toUpperCase()}\`
+➜ **Punishment:** \`${s.nsfwPunish.toUpperCase()}\`
+➜ **Filtered Words:** \`${s.words.length}\`
+➜ **Whitelisted Users:** \`${s.allowedUsers.length}\`
+              `);
+              const row1 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_toggle_nsfw').setLabel('Toggle AI').setStyle(s.antiNsfw ? ButtonStyle.Danger : ButtonStyle.Success), new ButtonBuilder().setCustomId('cfg_mode').setLabel('Change Mode').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('cfg_punish').setLabel('Change Punishment').setStyle(ButtonStyle.Primary));
+              const row2 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_filter_add').setLabel('Add Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_remove').setLabel('Remove Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_list').setLabel('View Words').setStyle(ButtonStyle.Secondary));
+              const row3 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_user_add').setLabel('Add User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_remove').setLabel('Remove User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_list').setLabel('View Users').setStyle(ButtonStyle.Secondary));
+              await interaction.update({ embeds: [embed], components: [row1, row2, row3] });
               return interaction.followUp({ content: `✅ Added \`${word}\` to filter.`, ephemeral: true });
           }
 
@@ -233,8 +239,18 @@ client.on('interactionCreate', async (interaction) => {
               if (index === -1) return interaction.reply({ content: '❌ Word not found in filter.', ephemeral: true });
               s.words.splice(index, 1);
               await s.save();
-              const menu = generateConfigMenu(s);
-              await interaction.update(menu);
+              const status = s.antiNsfw ? `🟢 **ON**` : `🔴 **OFF**`;
+              const embed = new EmbedBuilder().setColor('#2B2D31').setTitle('⚙️ AntiTerm Configuration').setDescription(`
+➜ **AI Scanner:** ${status}
+➜ **Mode:** \`${s.nsfwMode.toUpperCase()}\`
+➜ **Punishment:** \`${s.nsfwPunish.toUpperCase()}\`
+➜ **Filtered Words:** \`${s.words.length}\`
+➜ **Whitelisted Users:** \`${s.allowedUsers.length}\`
+              `);
+              const row1 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_toggle_nsfw').setLabel('Toggle AI').setStyle(s.antiNsfw ? ButtonStyle.Danger : ButtonStyle.Success), new ButtonBuilder().setCustomId('cfg_mode').setLabel('Change Mode').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('cfg_punish').setLabel('Change Punishment').setStyle(ButtonStyle.Primary));
+              const row2 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_filter_add').setLabel('Add Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_remove').setLabel('Remove Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_list').setLabel('View Words').setStyle(ButtonStyle.Secondary));
+              const row3 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_user_add').setLabel('Add User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_remove').setLabel('Remove User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_list').setLabel('View Users').setStyle(ButtonStyle.Secondary));
+              await interaction.update({ embeds: [embed], components: [row1, row2, row3] });
               return interaction.followUp({ content: `✅ Removed \`${word}\` from filter.`, ephemeral: true });
           }
 
@@ -243,8 +259,18 @@ client.on('interactionCreate', async (interaction) => {
               if (s.allowedUsers.includes(userId)) return interaction.reply({ content: '❌ User is already whitelisted.', ephemeral: true });
               s.allowedUsers.push(userId);
               await s.save();
-              const menu = generateConfigMenu(s);
-              await interaction.update(menu);
+              const status = s.antiNsfw ? `🟢 **ON**` : `🔴 **OFF**`;
+              const embed = new EmbedBuilder().setColor('#2B2D31').setTitle('⚙️ AntiTerm Configuration').setDescription(`
+➜ **AI Scanner:** ${status}
+➜ **Mode:** \`${s.nsfwMode.toUpperCase()}\`
+➜ **Punishment:** \`${s.nsfwPunish.toUpperCase()}\`
+➜ **Filtered Words:** \`${s.words.length}\`
+➜ **Whitelisted Users:** \`${s.allowedUsers.length}\`
+              `);
+              const row1 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_toggle_nsfw').setLabel('Toggle AI').setStyle(s.antiNsfw ? ButtonStyle.Danger : ButtonStyle.Success), new ButtonBuilder().setCustomId('cfg_mode').setLabel('Change Mode').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('cfg_punish').setLabel('Change Punishment').setStyle(ButtonStyle.Primary));
+              const row2 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_filter_add').setLabel('Add Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_remove').setLabel('Remove Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_list').setLabel('View Words').setStyle(ButtonStyle.Secondary));
+              const row3 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_user_add').setLabel('Add User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_remove').setLabel('Remove User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_list').setLabel('View Users').setStyle(ButtonStyle.Secondary));
+              await interaction.update({ embeds: [embed], components: [row1, row2, row3] });
               return interaction.followUp({ content: `✅ Whitelisted <@${userId}>.`, ephemeral: true });
           }
 
@@ -254,8 +280,18 @@ client.on('interactionCreate', async (interaction) => {
               if (index === -1) return interaction.reply({ content: '❌ User is not whitelisted.', ephemeral: true });
               s.allowedUsers.splice(index, 1);
               await s.save();
-              const menu = generateConfigMenu(s);
-              await interaction.update(menu);
+              const status = s.antiNsfw ? `🟢 **ON**` : `🔴 **OFF**`;
+              const embed = new EmbedBuilder().setColor('#2B2D31').setTitle('⚙️ AntiTerm Configuration').setDescription(`
+➜ **AI Scanner:** ${status}
+➜ **Mode:** \`${s.nsfwMode.toUpperCase()}\`
+➜ **Punishment:** \`${s.nsfwPunish.toUpperCase()}\`
+➜ **Filtered Words:** \`${s.words.length}\`
+➜ **Whitelisted Users:** \`${s.allowedUsers.length}\`
+              `);
+              const row1 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_toggle_nsfw').setLabel('Toggle AI').setStyle(s.antiNsfw ? ButtonStyle.Danger : ButtonStyle.Success), new ButtonBuilder().setCustomId('cfg_mode').setLabel('Change Mode').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('cfg_punish').setLabel('Change Punishment').setStyle(ButtonStyle.Primary));
+              const row2 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_filter_add').setLabel('Add Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_remove').setLabel('Remove Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_list').setLabel('View Words').setStyle(ButtonStyle.Secondary));
+              const row3 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_user_add').setLabel('Add User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_remove').setLabel('Remove User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_list').setLabel('View Users').setStyle(ButtonStyle.Secondary));
+              await interaction.update({ embeds: [embed], components: [row1, row2, row3] });
               return interaction.followUp({ content: `✅ Removed <@${userId}> from whitelist.`, ephemeral: true });
           }
       }
@@ -265,8 +301,18 @@ client.on('interactionCreate', async (interaction) => {
           if (interaction.commandName === 'config') {
               await interaction.deferReply();
               if (!isAuthorized(interaction.member, s)) return interaction.editReply({ content: '❌ No permission.' });
-              const menu = generateConfigMenu(s);
-              return interaction.editReply(menu);
+              const status = s.antiNsfw ? `🟢 **ON**` : `🔴 **OFF**`;
+              const embed = new EmbedBuilder().setColor('#2B2D31').setTitle('⚙️ AntiTerm Configuration').setDescription(`
+➜ **AI Scanner:** ${status}
+➜ **Mode:** \`${s.nsfwMode.toUpperCase()}\`
+➜ **Punishment:** \`${s.nsfwPunish.toUpperCase()}\`
+➜ **Filtered Words:** \`${s.words.length}\`
+➜ **Whitelisted Users:** \`${s.allowedUsers.length}\`
+              `);
+              const row1 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_toggle_nsfw').setLabel('Toggle AI').setStyle(s.antiNsfw ? ButtonStyle.Danger : ButtonStyle.Success), new ButtonBuilder().setCustomId('cfg_mode').setLabel('Change Mode').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('cfg_punish').setLabel('Change Punishment').setStyle(ButtonStyle.Primary));
+              const row2 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_filter_add').setLabel('Add Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_remove').setLabel('Remove Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_list').setLabel('View Words').setStyle(ButtonStyle.Secondary));
+              const row3 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_user_add').setLabel('Add User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_remove').setLabel('Remove User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_list').setLabel('View Users').setStyle(ButtonStyle.Secondary));
+              return interaction.editReply({ embeds: [embed], components: [row1, row2, row3] });
           }
           if (interaction.commandName === 'help') {
               await interaction.deferReply();
@@ -291,8 +337,18 @@ client.on('messageCreate', async (message) => {
       
       if (lowerContent === '$config') {
           if (!isAuthorized(message.member, s)) return sendMessage(message, 'error', 'Access Denied', ['You do not have permission.'], message.guild, client, s);
-          const menu = generateConfigMenu(s);
-          return message.reply(menu);
+          const status = s.antiNsfw ? `🟢 **ON**` : `🔴 **OFF**`;
+          const embed = new EmbedBuilder().setColor('#2B2D31').setTitle('⚙️ AntiTerm Configuration').setDescription(`
+➜ **AI Scanner:** ${status}
+➜ **Mode:** \`${s.nsfwMode.toUpperCase()}\`
+➜ **Punishment:** \`${s.nsfwPunish.toUpperCase()}\`
+➜ **Filtered Words:** \`${s.words.length}\`
+➜ **Whitelisted Users:** \`${s.allowedUsers.length}\`
+          `);
+          const row1 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_toggle_nsfw').setLabel('Toggle AI').setStyle(s.antiNsfw ? ButtonStyle.Danger : ButtonStyle.Success), new ButtonBuilder().setCustomId('cfg_mode').setLabel('Change Mode').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId('cfg_punish').setLabel('Change Punishment').setStyle(ButtonStyle.Primary));
+          const row2 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_filter_add').setLabel('Add Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_remove').setLabel('Remove Word').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_filter_list').setLabel('View Words').setStyle(ButtonStyle.Secondary));
+          const row3 = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('cfg_user_add').setLabel('Add User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_remove').setLabel('Remove User').setStyle(ButtonStyle.Secondary), new ButtonBuilder().setCustomId('cfg_user_list').setLabel('View Users').setStyle(ButtonStyle.Secondary));
+          return message.reply({ embeds: [embed], components: [row1, row2, row3] });
       }
 
       if (lowerContent === '$help') {
