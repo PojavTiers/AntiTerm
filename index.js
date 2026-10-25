@@ -206,7 +206,7 @@ client.on('interactionCreate', async (interaction) => {
           }
       }
 
-      // 2. SELECT MENU HANDLERS (Fixed to update the message correctly)
+      // 2. SELECT MENU HANDLERS
       if (interaction.isStringSelectMenu()) {
           if (!isAuthorized(interaction.member, s)) return;
           
