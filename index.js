@@ -51,9 +51,11 @@ function censorWord(word) {
 
 // --- GENERATE CONFIG MENU ---
 async function generateConfigMenu(client, s, guild) {
+    // Fetching your EXACT custom emojis
     const settingsEmoji = await embeds.getEmoji(client, 'settings', '⚙️');
     const onlineEmoji = await embeds.getEmoji(client, 'online_t', '🟢');
     const offlineEmoji = await embeds.getEmoji(client, 'offline_t', '🔴');
+    const arrow = await embeds.getEmoji(client, 'arrow_long', '➜');
     
     const status = s.antiNsfw ? `${onlineEmoji} **Enabled**` : `${offlineEmoji} **Disabled**`;
     const wordCount = s.words ? s.words.length : 0;
@@ -63,13 +65,13 @@ async function generateConfigMenu(client, s, guild) {
 ### ${settingsEmoji} AntiTerm Configuration
 
 **NSFW Media Scanner**
-➜ **Status:** ${status}
-➜ **Mode:** \`${s.nsfwMode.toUpperCase()}\`
-➜ **Punishment:** \`${s.nsfwPunish.toUpperCase()}\`
+${arrow} **Status:** ${status}
+${arrow} **Mode:** \`${s.nsfwMode.toUpperCase()}\`
+${arrow} **Punishment:** \`${s.nsfwPunish.toUpperCase()}\`
 
 **Text Filter**
-➜ **Filtered Words:** \`${wordCount}\`
-➜ **Whitelisted Users:** \`${userCount}\`
+${arrow} **Filtered Words:** \`${wordCount}\`
+${arrow} **Whitelisted Users:** \`${userCount}\`
     `);
 
     const row1 = new ActionRowBuilder().addComponents(
@@ -210,7 +212,7 @@ client.on('interactionCreate', async (interaction) => {
       if (interaction.isStringSelectMenu()) {
           if (!isAuthorized(interaction.member, s)) return;
           
-          // We MUST use deferUpdate here to prevent the "did not respond in time" error
+          // Use update to prevent timeout
           await interaction.deferUpdate();
 
           if (interaction.customId === 'select_mode') {
@@ -372,6 +374,7 @@ client.on('messageCreate', async (message) => {
          for (let mediaUrl of mediaUrls) {
              if (isUnsafe) break;
              try {
+                 // Automatically add https:// if missing
                  let finalUrl = mediaUrl;
                  if (!finalUrl.match(/\.(jpeg|jpg|png|gif|mp4|webm)/i) && !finalUrl.includes('cdn.discordapp.com')) {
                      const webRes = await fetch(finalUrl); const html = await webRes.text();
@@ -385,13 +388,19 @@ client.on('messageCreate', async (message) => {
                  const contentType = imageResponse.headers.get('content-type');
                  const imageBuffer = await imageResponse.arrayBuffer();
                  const buffer = Buffer.from(imageBuffer);
+                 
+                 // Ensure URL has https://
+                 let apiUrl = process.env.NSFW_API_URL;
+                 if (!apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
+                     apiUrl = 'https://' + apiUrl;
+                 }
 
                  if (isVideo) {
                      const collageBuffer = await createVideoCollage(buffer);
                      if (collageBuffer) {
                          const formData = new FormData(); 
                          formData.append('image', new Blob([collageBuffer], { type: 'image/jpeg' }), 'collage.jpg');
-                         const apiRes = await fetch(process.env.NSFW_API_URL + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
+                         const apiRes = await fetch(apiUrl + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
                          const data = JSON.parse(await apiRes.text());
                          if (data.safe === false || (data.scores && (data.scores.nsfw > threshold || data.scores.sexy > threshold || data.scores.hentai > threshold || data.scores.porn > threshold))) { isUnsafe = true; detectedFlag = getTopFlag(data.scores); }
                      }
@@ -404,7 +413,7 @@ client.on('messageCreate', async (message) => {
                                  const frame = frameData[i * step];
                                  const frameBuffer = await new Promise((resolve, reject) => { const chunks = []; const stream = frame.getImage(); stream.on('data', (chunk) => chunks.push(chunk)); stream.on('end', () => resolve(Buffer.concat(chunks))); stream.on('error', reject); });
                                  const formData = new FormData(); formData.append('image', new Blob([frameBuffer], { type: 'image/jpeg' }), `frame_${i}.jpg`);
-                                 const apiRes = await fetch(process.env.NSFW_API_URL + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
+                                 const apiRes = await fetch(apiUrl + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
                                  const data = JSON.parse(await apiRes.text());
                                  if (data.safe === false || (data.scores && (data.scores.nsfw > threshold || data.scores.sexy > threshold || data.scores.hentai > threshold || data.scores.porn > threshold))) { isUnsafe = true; detectedFlag = getTopFlag(data.scores); break; }
                              }
@@ -412,11 +421,11 @@ client.on('messageCreate', async (message) => {
                      } catch (e) {}
                  } else {
                      const blob = new Blob([imageBuffer], { type: contentType || 'image/jpeg' }); const formData = new FormData(); formData.append('image', blob, 'image.jpg');
-                     const response = await fetch(process.env.NSFW_API_URL + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
+                     const response = await fetch(apiUrl + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
                      const data = JSON.parse(await response.text());
                      if (data.safe === false || (data.flags && data.flags.length > 0) || (data.scores && ((data.scores.nsfw > threshold) || (data.scores.sexy > threshold) || (data.scores.hentai > threshold) || (data.scores.porn > threshold)))) { isUnsafe = true; detectedFlag = getTopFlag(data.scores); }
                  }
-             } catch (err) { console.error(err); }
+             } catch (err) { console.error("Scanner Error:", err); }
          }
 
          if (isUnsafe) {
