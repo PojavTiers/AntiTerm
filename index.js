@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, ComponentType, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder, ContainerBuilder, TextDisplayBuilder, SeparatorBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, ComponentType, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder, EmbedBuilder } = require('discord.js');
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegPath = require('ffmpeg-static');
 const ffprobePath = require('ffprobe-static').path;
@@ -49,25 +49,38 @@ function censorWord(word) {
     return word;
 }
 
-// --- GENERATE CONFIG MENU ---
-function generateConfigMenu(s) {
-    const status = s.antiNsfw ? `🟢 **ON**` : `🔴 **OFF**`;
+// --- GENERATE CONFIG MENU (Professional & Clean) ---
+async function generateConfigMenu(client, s, guild) {
+    const settingsEmoji = await embeds.getEmoji(client, 'settings', '⚙️');
+    const onlineEmoji = await embeds.getEmoji(client, 'online_t', '🟢');
+    const offlineEmoji = await embeds.getEmoji(client, 'offline_t', '🔴');
+    
+    const status = s.antiNsfw ? `${onlineEmoji} **Enabled**` : `${offlineEmoji} **Disabled**`;
     const wordCount = s.words ? s.words.length : 0;
     const userCount = s.allowedUsers ? s.allowedUsers.length : 0;
     
-    const textDisplay = new TextDisplayBuilder().setContent(`
-### ⚙️ AntiTerm Configuration
-➜ **AI Scanner:** ${status}
+    const embed = new EmbedBuilder()
+        .setColor('#2B2D31')
+        .setAuthor({ name: 'AntiTerm Configuration', iconURL: client.user.displayAvatarURL() })
+        .setDescription(`
+${settingsEmoji} **System Dashboard**
+Welcome to the control panel. Manage your server's security settings below.
+
+**NSFW Media Scanner**
+➜ **Status:** ${status}
 ➜ **Mode:** \`${s.nsfwMode.toUpperCase()}\`
 ➜ **Punishment:** \`${s.nsfwPunish.toUpperCase()}\`
+
+**Text Filter**
 ➜ **Filtered Words:** \`${wordCount}\`
 ➜ **Whitelisted Users:** \`${userCount}\`
-    `);
+        `)
+        .setFooter({ text: 'AntiTerm Security', iconURL: client.user.displayAvatarURL() });
 
     const row1 = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('cfg_toggle_nsfw').setLabel('Toggle AI').setStyle(s.antiNsfw ? ButtonStyle.Danger : ButtonStyle.Success),
-        new ButtonBuilder().setCustomId('cfg_mode').setLabel('Change Mode').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('cfg_punish').setLabel('Change Punishment').setStyle(ButtonStyle.Primary)
+        new ButtonBuilder().setCustomId('cfg_toggle_nsfw').setLabel('Toggle Scanner').setStyle(s.antiNsfw ? ButtonStyle.Danger : ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('cfg_mode').setLabel('Scanner Mode').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId('cfg_punish').setLabel('Punishment').setStyle(ButtonStyle.Primary)
     );
 
     const row2 = new ActionRowBuilder().addComponents(
@@ -82,12 +95,7 @@ function generateConfigMenu(s) {
         new ButtonBuilder().setCustomId('cfg_user_list').setLabel('View Users').setStyle(ButtonStyle.Secondary)
     );
 
-    return new ContainerBuilder()
-        .addTextDisplayComponents(textDisplay)
-        .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(1))
-        .addActionRowComponents(row1)
-        .addActionRowComponents(row2)
-        .addActionRowComponents(row3);
+    return { embeds: [embed], components: [row1, row2, row3] };
 }
 
 client.once('clientReady', async () => {
@@ -99,8 +107,8 @@ client.once('clientReady', async () => {
         { name: 'config', description: 'Open the interactive configuration menu' },
         { name: 'help', description: 'View bot information and features' }
       ]); 
-      console.log("[DEBUG] Global slash commands registered successfully.");
-  } catch (e) { console.error("Command Registration Error:", e); }
+      console.log("[DEBUG] Global slash commands registered.");
+  } catch (e) { console.error(e); }
 });
 
 const dmCooldowns = new Set();
@@ -130,13 +138,16 @@ client.on('interactionCreate', async (interaction) => {
       if (interaction.isButton()) {
           if (!isAuthorized(interaction.member, s)) return interaction.reply({ content: '❌ No permission.', ephemeral: true });
 
+          // Toggle Scanner
           if (interaction.customId === 'cfg_toggle_nsfw') {
+              await interaction.deferUpdate(); // Prevents "didn't respond in time"
               s.antiNsfw = !s.antiNsfw;
               await s.save();
-              const menu = generateConfigMenu(s);
-              return interaction.update({ components: [menu], flags: MessageFlags.IsComponentsV2 });
+              const menu = await generateConfigMenu(client, s, interaction.guild);
+              return interaction.editReply(menu);
           }
 
+          // Add Word Modal
           if (interaction.customId === 'cfg_filter_add') {
               const modal = new ModalBuilder().setCustomId('modal_filter_add').setTitle('Add Filtered Word');
               const input = new TextInputBuilder().setCustomId('word_input').setLabel('Word to filter').setStyle(TextInputStyle.Short).setRequired(true);
@@ -144,6 +155,7 @@ client.on('interactionCreate', async (interaction) => {
               return interaction.showModal(modal);
           }
 
+          // Remove Word Modal
           if (interaction.customId === 'cfg_filter_remove') {
               if (!s.words || s.words.length === 0) return interaction.reply({ content: '❌ No words to remove.', ephemeral: true });
               const modal = new ModalBuilder().setCustomId('modal_filter_remove').setTitle('Remove Filtered Word');
@@ -152,6 +164,7 @@ client.on('interactionCreate', async (interaction) => {
               return interaction.showModal(modal);
           }
 
+          // Add User Modal
           if (interaction.customId === 'cfg_user_add') {
               if (interaction.user.id !== interaction.guild.ownerId && interaction.user.id !== OWNER_ID) return interaction.reply({ content: '❌ Only the Server Owner can manage whitelisted users.', ephemeral: true });
               const modal = new ModalBuilder().setCustomId('modal_user_add').setTitle('Add Whitelisted User');
@@ -160,6 +173,7 @@ client.on('interactionCreate', async (interaction) => {
               return interaction.showModal(modal);
           }
 
+          // Remove User Modal
           if (interaction.customId === 'cfg_user_remove') {
               if (interaction.user.id !== interaction.guild.ownerId && interaction.user.id !== OWNER_ID) return interaction.reply({ content: '❌ Only the Server Owner can manage whitelisted users.', ephemeral: true });
               if (!s.allowedUsers || s.allowedUsers.length === 0) return interaction.reply({ content: '❌ No users to remove.', ephemeral: true });
@@ -169,16 +183,19 @@ client.on('interactionCreate', async (interaction) => {
               return interaction.showModal(modal);
           }
 
+          // List Words
           if (interaction.customId === 'cfg_filter_list') {
               const words = s.words && s.words.length > 0 ? s.words.map(w => `\`${w}\``).join(', ') : 'None';
               return interaction.reply({ content: `➜ **Filtered Words:** ${words}`, ephemeral: true });
           }
 
+          // List Users
           if (interaction.customId === 'cfg_user_list') {
               const users = s.allowedUsers && s.allowedUsers.length > 0 ? s.allowedUsers.map(id => `<@${id}>`).join(', ') : 'None';
               return interaction.reply({ content: `➜ **Whitelisted Users:** ${users}`, ephemeral: true });
           }
 
+          // Mode Select
           if (interaction.customId === 'cfg_mode') {
               const select = new StringSelectMenuBuilder().setCustomId('select_mode').setPlaceholder('Select a mode').addOptions([
                   { label: 'Basic', description: 'Only hardcore porn', value: 'basic' },
@@ -188,6 +205,7 @@ client.on('interactionCreate', async (interaction) => {
               return interaction.reply({ content: 'Select the new mode:', components: [new ActionRowBuilder().addComponents(select)], ephemeral: true });
           }
 
+          // Punishment Select
           if (interaction.customId === 'cfg_punish') {
               const select = new StringSelectMenuBuilder().setCustomId('select_punish').setPlaceholder('Select a punishment').addOptions([
                   { label: 'Delete', value: 'delete' }, { label: 'Mute', value: 'mute' },
@@ -200,20 +218,21 @@ client.on('interactionCreate', async (interaction) => {
       // 2. SELECT MENU HANDLERS
       if (interaction.isStringSelectMenu()) {
           if (!isAuthorized(interaction.member, s)) return;
+          await interaction.deferUpdate();
           
           if (interaction.customId === 'select_mode') {
               s.nsfwMode = interaction.values[0];
               await s.save();
-              const menu = generateConfigMenu(s);
-              await interaction.update({ components: [menu], flags: MessageFlags.IsComponentsV2 });
+              const menu = await generateConfigMenu(client, s, interaction.guild);
+              await interaction.editReply(menu);
               return interaction.followUp({ content: `✅ Mode changed to **${s.nsfwMode.toUpperCase()}**`, ephemeral: true });
           }
 
           if (interaction.customId === 'select_punish') {
               s.nsfwPunish = interaction.values[0];
               await s.save();
-              const menu = generateConfigMenu(s);
-              await interaction.update({ components: [menu], flags: MessageFlags.IsComponentsV2 });
+              const menu = await generateConfigMenu(client, s, interaction.guild);
+              await interaction.editReply(menu);
               return interaction.followUp({ content: `✅ Punishment changed to **${s.nsfwPunish.toUpperCase()}**`, ephemeral: true });
           }
       }
@@ -221,52 +240,45 @@ client.on('interactionCreate', async (interaction) => {
       // 3. MODAL SUBMIT HANDLERS
       if (interaction.isModalSubmit()) {
           if (!isAuthorized(interaction.member, s)) return;
+          await interaction.deferReply({ ephemeral: true });
           const input = interaction.fields.getTextInputValue('word_input') || interaction.fields.getTextInputValue('user_id');
 
           if (interaction.customId === 'modal_filter_add') {
               const word = input.toLowerCase().trim();
               if (!s.words) s.words = [];
-              if (s.words.includes(word)) return interaction.reply({ content: '❌ Word is already filtered.', ephemeral: true });
+              if (s.words.includes(word)) return interaction.editReply({ content: '❌ Word is already filtered.' });
               s.words.push(word);
               await s.save();
-              const menu = generateConfigMenu(s);
-              await interaction.update({ components: [menu], flags: MessageFlags.IsComponentsV2 });
-              return interaction.followUp({ content: `✅ Added \`${word}\` to filter.`, ephemeral: true });
+              return interaction.editReply({ content: `✅ Added \`${word}\` to filter.` });
           }
 
           if (interaction.customId === 'modal_filter_remove') {
               const word = input.toLowerCase().trim();
               if (!s.words) s.words = [];
               const index = s.words.indexOf(word);
-              if (index === -1) return interaction.reply({ content: '❌ Word not found in filter.', ephemeral: true });
+              if (index === -1) return interaction.editReply({ content: '❌ Word not found in filter.' });
               s.words.splice(index, 1);
               await s.save();
-              const menu = generateConfigMenu(s);
-              await interaction.update({ components: [menu], flags: MessageFlags.IsComponentsV2 });
-              return interaction.followUp({ content: `✅ Removed \`${word}\` from filter.`, ephemeral: true });
+              return interaction.editReply({ content: `✅ Removed \`${word}\` from filter.` });
           }
 
           if (interaction.customId === 'modal_user_add') {
               const userId = input.replace(/[<@!>]/g, '').trim();
               if (!s.allowedUsers) s.allowedUsers = [];
-              if (s.allowedUsers.includes(userId)) return interaction.reply({ content: '❌ User is already whitelisted.', ephemeral: true });
+              if (s.allowedUsers.includes(userId)) return interaction.editReply({ content: '❌ User is already whitelisted.' });
               s.allowedUsers.push(userId);
               await s.save();
-              const menu = generateConfigMenu(s);
-              await interaction.update({ components: [menu], flags: MessageFlags.IsComponentsV2 });
-              return interaction.followUp({ content: `✅ Whitelisted <@${userId}>.`, ephemeral: true });
+              return interaction.editReply({ content: `✅ Whitelisted <@${userId}>.` });
           }
 
           if (interaction.customId === 'modal_user_remove') {
               const userId = input.replace(/[<@!>]/g, '').trim();
               if (!s.allowedUsers) s.allowedUsers = [];
               const index = s.allowedUsers.indexOf(userId);
-              if (index === -1) return interaction.reply({ content: '❌ User is not whitelisted.', ephemeral: true });
+              if (index === -1) return interaction.editReply({ content: '❌ User is not whitelisted.' });
               s.allowedUsers.splice(index, 1);
               await s.save();
-              const menu = generateConfigMenu(s);
-              await interaction.update({ components: [menu], flags: MessageFlags.IsComponentsV2 });
-              return interaction.followUp({ content: `✅ Removed <@${userId}> from whitelist.`, ephemeral: true });
+              return interaction.editReply({ content: `✅ Removed <@${userId}> from whitelist.` });
           }
       }
 
@@ -275,8 +287,8 @@ client.on('interactionCreate', async (interaction) => {
           if (interaction.commandName === 'config') {
               await interaction.deferReply();
               if (!isAuthorized(interaction.member, s)) return interaction.editReply({ content: '❌ No permission.' });
-              const menu = generateConfigMenu(s);
-              return interaction.editReply({ components: [menu], flags: MessageFlags.IsComponentsV2 });
+              const menu = await generateConfigMenu(client, s, interaction.guild);
+              return interaction.editReply(menu);
           }
           if (interaction.commandName === 'help') {
               await interaction.deferReply();
@@ -302,21 +314,10 @@ client.on('messageCreate', async (message) => {
       if (lowerContent === '$config') {
           console.log(`[DEBUG] $config command triggered by ${message.author.tag}`);
           if (!isAuthorized(message.member, s)) {
-              console.log(`[DEBUG] ${message.author.tag} is not authorized.`);
               return sendMessage(message, 'error', 'Access Denied', ['You do not have permission.'], message.guild, client, s);
           }
-          
-          try {
-              console.log(`[DEBUG] Generating config menu for guild ${message.guild.id}...`);
-              const menu = generateConfigMenu(s);
-              console.log(`[DEBUG] Menu generated. Attempting to send reply...`);
-              
-              await message.reply({ components: [menu], flags: MessageFlags.IsComponentsV2 });
-              console.log(`[DEBUG] $config menu sent successfully!`);
-          } catch (err) {
-              console.error(`[ERROR] Failed to send $config menu:`, err);
-          }
-          return;
+          const menu = await generateConfigMenu(client, s, message.guild);
+          return message.reply(menu);
       }
 
       if (lowerContent === '$help') {
