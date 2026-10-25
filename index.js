@@ -49,7 +49,7 @@ function censorWord(word) {
     return word;
 }
 
-// --- GENERATE CONFIG MENU ---
+// --- GENERATE CONFIG MENU (100% Reliable, No Emoji Fetching) ---
 function generateConfigMenu(s) {
     const status = s.antiNsfw ? `🟢 **ON**` : `🔴 **OFF**`;
     
