@@ -49,7 +49,7 @@ function censorWord(word) {
     return word;
 }
 
-// --- GENERATE CONFIG MENU (Using ContainerBuilder - Same as Help) ---
+// --- GENERATE CONFIG MENU ---
 function generateConfigMenu(s) {
     const status = s.antiNsfw ? `🟢 **ON**` : `🔴 **OFF**`;
     
@@ -97,7 +97,8 @@ client.once('clientReady', async () => {
         { name: 'config', description: 'Open the interactive configuration menu' },
         { name: 'help', description: 'View bot information and features' }
       ]); 
-  } catch (e) { console.error(e); }
+      console.log("[DEBUG] Global slash commands registered successfully.");
+  } catch (e) { console.error("Command Registration Error:", e); }
 });
 
 const dmCooldowns = new Set();
@@ -293,12 +294,27 @@ client.on('messageCreate', async (message) => {
       const lowerContent = message.content.toLowerCase();
       
       if (lowerContent === '$config') {
-          if (!isAuthorized(message.member, s)) return sendMessage(message, 'error', 'Access Denied', ['You do not have permission.'], message.guild, client, s);
-          const menu = generateConfigMenu(s);
-          return message.reply({ components: [menu], flags: MessageFlags.IsComponentsV2 });
+          console.log(`[DEBUG] $config command triggered by ${message.author.tag}`);
+          if (!isAuthorized(message.member, s)) {
+              console.log(`[DEBUG] ${message.author.tag} is not authorized.`);
+              return sendMessage(message, 'error', 'Access Denied', ['You do not have permission.'], message.guild, client, s);
+          }
+          
+          try {
+              console.log(`[DEBUG] Generating config menu for guild ${message.guild.id}...`);
+              const menu = generateConfigMenu(s);
+              console.log(`[DEBUG] Menu generated. Attempting to send reply...`);
+              
+              await message.reply({ components: [menu], flags: MessageFlags.IsComponentsV2 });
+              console.log(`[DEBUG] $config menu sent successfully!`);
+          } catch (err) {
+              console.error(`[ERROR] Failed to send $config menu:`, err);
+          }
+          return;
       }
 
       if (lowerContent === '$help') {
+          // ... (help logic remains exactly the same)
           const helpMenu = await getHelpContainer(1, client, 2);
           const msg = await message.reply({ components: [helpMenu], flags: MessageFlags.IsComponentsV2 });
           
