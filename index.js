@@ -343,7 +343,7 @@ client.on('messageCreate', async (message) => {
         }
       }
 
-      // AI SCANNER
+      // AI SCANNER WITH LOGGING
       if (s.antiNsfw) {
          const threshold = getNsfwThreshold(s.nsfwMode);
          let isUnsafe = false;
@@ -378,6 +378,9 @@ client.on('messageCreate', async (message) => {
                      const mediaMatch = html.match(/(https:\/\/[^"']+\.(?:gif|mp4|webm))/i);
                      if (mediaMatch) finalUrl = mediaMatch[0]; else continue;
                  }
+                 
+                 console.log(`[SCANNER] Checking URL: ${finalUrl}`);
+
                  const isVideo = finalUrl.toLowerCase().includes('.mp4') || finalUrl.toLowerCase().includes('.webm');
                  const isGif = finalUrl.toLowerCase().includes('.gif');
                  const imageResponse = await fetch(finalUrl);
@@ -392,6 +395,7 @@ client.on('messageCreate', async (message) => {
                          formData.append('image', new Blob([collageBuffer], { type: 'image/jpeg' }), 'collage.jpg');
                          const apiRes = await fetch(process.env.NSFW_API_URL + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
                          const data = JSON.parse(await apiRes.text());
+                         console.log(`[SCANNER] Video Response:`, data.scores || data);
                          if (data.safe === false || (data.scores && (data.scores.nsfw > threshold || data.scores.sexy > threshold || data.scores.hentai > threshold || data.scores.porn > threshold))) { isUnsafe = true; detectedFlag = getTopFlag(data.scores); }
                      }
                  } else if (isGif) { 
@@ -405,17 +409,19 @@ client.on('messageCreate', async (message) => {
                                  const formData = new FormData(); formData.append('image', new Blob([frameBuffer], { type: 'image/jpeg' }), `frame_${i}.jpg`);
                                  const apiRes = await fetch(process.env.NSFW_API_URL + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
                                  const data = JSON.parse(await apiRes.text());
+                                 console.log(`[SCANNER] GIF Frame ${i} Response:`, data.scores || data);
                                  if (data.safe === false || (data.scores && (data.scores.nsfw > threshold || data.scores.sexy > threshold || data.scores.hentai > threshold || data.scores.porn > threshold))) { isUnsafe = true; detectedFlag = getTopFlag(data.scores); break; }
                              }
                          }
-                     } catch (e) {}
+                     } catch (e) { console.error("[SCANNER] GIF Error:", e); }
                  } else {
                      const blob = new Blob([imageBuffer], { type: contentType || 'image/jpeg' }); const formData = new FormData(); formData.append('image', blob, 'image.jpg');
                      const response = await fetch(process.env.NSFW_API_URL + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
                      const data = JSON.parse(await response.text());
+                     console.log(`[SCANNER] Image Response:`, data.scores || data);
                      if (data.safe === false || (data.flags && data.flags.length > 0) || (data.scores && ((data.scores.nsfw > threshold) || (data.scores.sexy > threshold) || (data.scores.hentai > threshold) || (data.scores.porn > threshold)))) { isUnsafe = true; detectedFlag = getTopFlag(data.scores); }
                  }
-             } catch (err) { console.error(err); }
+             } catch (err) { console.error("[SCANNER] Fetch Error:", err); }
          }
 
          if (isUnsafe) {
