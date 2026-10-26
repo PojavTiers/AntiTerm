@@ -49,23 +49,13 @@ function censorWord(word) {
     return word;
 }
 
-// --- GENERATE CONFIG MENU (Professional) ---
+// --- GENERATE CONFIG MENU ---
 async function generateConfigMenu(client, s, guild) {
     const settingsEmoji = await embeds.getEmoji(client, 'settings', '⚙️');
     const onlineEmoji = await embeds.getEmoji(client, 'online_t', '🟢');
     const offlineEmoji = await embeds.getEmoji(client, 'offline_t', '🔴');
     const arrow = await embeds.getEmoji(client, 'arrow_long', '➜');
     
-    const toggleEmoji = await embeds.getButtonEmoji(client, 'toggle', '🔘');
-    const brainEmoji = await embeds.getButtonEmoji(client, 'brain', '🧠');
-    const scalesEmoji = await embeds.getButtonEmoji(client, 'scales', '⚖️');
-    const addEmoji = await embeds.getButtonEmoji(client, 'add', '📝');
-    const removeEmoji = await embeds.getButtonEmoji(client, 'remove', '🗑️');
-    const listEmoji = await embeds.getButtonEmoji(client, 'list', '📋');
-    const userAddEmoji = await embeds.getButtonEmoji(client, 'user_add', '👤');
-    const userRemoveEmoji = await embeds.getButtonEmoji(client, 'user_remove', '❌');
-    const usersEmoji = await embeds.getButtonEmoji(client, 'users', '👥');
-
     const status = s.antiNsfw ? `${onlineEmoji} **Enabled**` : `${offlineEmoji} **Disabled**`;
     const wordCount = s.words ? s.words.length : 0;
     const userCount = s.allowedUsers ? s.allowedUsers.length : 0;
@@ -89,15 +79,15 @@ ${arrow} **Whitelisted Users:** \`${userCount}\`
         .setCustomId('config_menu')
         .setPlaceholder('Select a setting to configure...')
         .addOptions([
-            { label: 'Toggle Scanner', description: 'Turn the NSFW media scanner on or off', value: 'action_toggle_nsfw', emoji: toggleEmoji },
-            { label: 'Scanner Mode', description: 'Change the AI strictness (Basic, Moderate, Advanced)', value: 'action_mode', emoji: brainEmoji },
-            { label: 'Punishment', description: 'Set what happens to rule breakers', value: 'action_punish', emoji: scalesEmoji },
-            { label: 'Add Filter Words', description: 'Add words to the unbypassable text filter', value: 'action_add_word', emoji: addEmoji },
-            { label: 'Remove Filter Word', description: 'Remove a word from the text filter', value: 'action_remove_word', emoji: removeEmoji },
-            { label: 'View Filtered Words', description: 'See all currently blocked words', value: 'action_list_words', emoji: listEmoji },
-            { label: 'Add Whitelisted User', description: 'Allow a user to configure the bot', value: 'action_add_user', emoji: userAddEmoji },
-            { label: 'Remove Whitelisted User', description: 'Revoke a user\'s access to the bot', value: 'action_remove_user', emoji: userRemoveEmoji },
-            { label: 'View Whitelisted Users', description: 'See who can configure the bot', value: 'action_list_users', emoji: usersEmoji },
+            { label: 'Toggle Scanner', description: 'Turn the NSFW media scanner on or off', value: 'action_toggle_nsfw' },
+            { label: 'Scanner Mode', description: 'Change the AI strictness', value: 'action_mode' },
+            { label: 'Punishment', description: 'Set what happens to rule breakers', value: 'action_punish' },
+            { label: 'Add Filter Words', description: 'Add words to the unbypassable filter', value: 'action_add_word' },
+            { label: 'Remove Filter Word', description: 'Remove a word from the text filter', value: 'action_remove_word' },
+            { label: 'View Filtered Words', description: 'See all currently blocked words', value: 'action_list_words' },
+            { label: 'Add Whitelisted User', description: 'Allow a user to configure the bot', value: 'action_add_user' },
+            { label: 'Remove Whitelisted User', description: 'Revoke a user\'s access to the bot', value: 'action_remove_user' },
+            { label: 'View Whitelisted Users', description: 'See who can configure the bot', value: 'action_list_users' },
         ]);
 
     const row = new ActionRowBuilder().addComponents(selectMenu);
@@ -117,7 +107,6 @@ client.once('clientReady', async () => {
         { name: 'config', description: 'Open the interactive configuration menu' },
         { name: 'help', description: 'View bot information and features' }
       ]); 
-      console.log("[DEBUG] Global slash commands registered.");
   } catch (e) { console.error(e); }
 });
 
@@ -149,8 +138,41 @@ client.on('interactionCreate', async (interaction) => {
           if (!isAuthorized(interaction.member, s)) return interaction.reply({ content: '❌ No permission.', ephemeral: true });
           
           const action = interaction.values[0];
-          
-          // IMPORTANT: Acknowledge the interaction immediately so it doesn't time out
+
+          // If action requires a Modal, we MUST show it immediately without deferring
+          if (action === 'action_add_word') {
+              const modal = new ModalBuilder().setCustomId('modal_filter_add').setTitle('Add Filtered Words');
+              const input = new TextInputBuilder().setCustomId('word_input').setLabel('Words (Separate with commas)').setPlaceholder('word1, word2, word3').setStyle(TextInputStyle.Paragraph).setRequired(true);
+              modal.addComponents(new ActionRowBuilder().addComponents(input));
+              return interaction.showModal(modal);
+          }
+
+          if (action === 'action_remove_word') {
+              if (!s.words || s.words.length === 0) return interaction.reply({ content: '❌ No words to remove.', ephemeral: true });
+              const modal = new ModalBuilder().setCustomId('modal_filter_remove').setTitle('Remove Filtered Word');
+              const input = new TextInputBuilder().setCustomId('word_input').setLabel('Word to remove').setStyle(TextInputStyle.Short).setRequired(true);
+              modal.addComponents(new ActionRowBuilder().addComponents(input));
+              return interaction.showModal(modal);
+          }
+
+          if (action === 'action_add_user') {
+              if (interaction.user.id !== interaction.guild.ownerId && interaction.user.id !== OWNER_ID) return interaction.reply({ content: '❌ Only the Server Owner can manage whitelisted users.', ephemeral: true });
+              const modal = new ModalBuilder().setCustomId('modal_user_add').setTitle('Add Whitelisted User');
+              const input = new TextInputBuilder().setCustomId('user_id').setLabel('User ID').setStyle(TextInputStyle.Short).setRequired(true);
+              modal.addComponents(new ActionRowBuilder().addComponents(input));
+              return interaction.showModal(modal);
+          }
+
+          if (action === 'action_remove_user') {
+              if (interaction.user.id !== interaction.guild.ownerId && interaction.user.id !== OWNER_ID) return interaction.reply({ content: '❌ Only the Server Owner can manage whitelisted users.', ephemeral: true });
+              if (!s.allowedUsers || s.allowedUsers.length === 0) return interaction.reply({ content: '❌ No users to remove.', ephemeral: true });
+              const modal = new ModalBuilder().setCustomId('modal_user_remove').setTitle('Remove Whitelisted User');
+              const input = new TextInputBuilder().setCustomId('user_id').setLabel('User ID').setStyle(TextInputStyle.Short).setRequired(true);
+              modal.addComponents(new ActionRowBuilder().addComponents(input));
+              return interaction.showModal(modal);
+          }
+
+          // For settings that don't require a Modal, we use deferUpdate + editReply
           await interaction.deferUpdate();
 
           if (action === 'action_toggle_nsfw') {
@@ -177,41 +199,9 @@ client.on('interactionCreate', async (interaction) => {
               return interaction.followUp({ content: 'Select the punishment:', components: [new ActionRowBuilder().addComponents(punishSelect)], ephemeral: true });
           }
 
-          if (action === 'action_add_word') {
-              const modal = new ModalBuilder().setCustomId('modal_filter_add').setTitle('Add Filtered Words');
-              const input = new TextInputBuilder().setCustomId('word_input').setLabel('Words (Separate with commas)').setPlaceholder('word1, word2, word3').setStyle(TextInputStyle.Paragraph).setRequired(true);
-              modal.addComponents(new ActionRowBuilder().addComponents(input));
-              return interaction.showModal(modal); // Show modal instantly after deferUpdate
-          }
-
-          if (action === 'action_remove_word') {
-              if (!s.words || s.words.length === 0) return interaction.followUp({ content: '❌ No words to remove.', ephemeral: true });
-              const modal = new ModalBuilder().setCustomId('modal_filter_remove').setTitle('Remove Filtered Word');
-              const input = new TextInputBuilder().setCustomId('word_input').setLabel('Word to remove').setStyle(TextInputStyle.Short).setRequired(true);
-              modal.addComponents(new ActionRowBuilder().addComponents(input));
-              return interaction.showModal(modal);
-          }
-
           if (action === 'action_list_words') {
               const words = s.words && s.words.length > 0 ? s.words.map(w => `\`${w}\``).join(', ') : 'None';
               return interaction.followUp({ content: `➜ **Filtered Words:** ${words}`, ephemeral: true });
-          }
-
-          if (action === 'action_add_user') {
-              if (interaction.user.id !== interaction.guild.ownerId && interaction.user.id !== OWNER_ID) return interaction.followUp({ content: '❌ Only the Server Owner can manage whitelisted users.', ephemeral: true });
-              const modal = new ModalBuilder().setCustomId('modal_user_add').setTitle('Add Whitelisted User');
-              const input = new TextInputBuilder().setCustomId('user_id').setLabel('User ID').setStyle(TextInputStyle.Short).setRequired(true);
-              modal.addComponents(new ActionRowBuilder().addComponents(input));
-              return interaction.showModal(modal);
-          }
-
-          if (action === 'action_remove_user') {
-              if (interaction.user.id !== interaction.guild.ownerId && interaction.user.id !== OWNER_ID) return interaction.followUp({ content: '❌ Only the Server Owner can manage whitelisted users.', ephemeral: true });
-              if (!s.allowedUsers || s.allowedUsers.length === 0) return interaction.followUp({ content: '❌ No users to remove.', ephemeral: true });
-              const modal = new ModalBuilder().setCustomId('modal_user_remove').setTitle('Remove Whitelisted User');
-              const input = new TextInputBuilder().setCustomId('user_id').setLabel('User ID').setStyle(TextInputStyle.Short).setRequired(true);
-              modal.addComponents(new ActionRowBuilder().addComponents(input));
-              return interaction.showModal(modal);
           }
 
           if (action === 'action_list_users') {
