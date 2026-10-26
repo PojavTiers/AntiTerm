@@ -10,7 +10,7 @@ const os = require('os');
 const embeds = require('./embeds.js');
 const setActivity = require('./activity.js');
 const { connectDB, getSettings, getWhitelist } = require('./database.js');
-const { sendMessage, isAuthorized, checkViolation, applyPunishment, getNsfwThreshold, createVideoCollage } = require('./utils.js');
+const { sendMessage, isAuthorized, checkViolation, applyPunishment, getNsfwThreshold } = require('./utils.js');
 const { getHelpContainer } = require('./help.js');
 
 ffmpeg.setFfmpegPath(ffmpegPath);
@@ -47,6 +47,35 @@ function censorWord(word) {
     if (word === 'sexy') return 's*xy';
     if (word === 'nsfw') return 'nsfw';
     return word;
+}
+
+// --- FAST COLLAGE GENERATOR (GIFs & Videos) ---
+async function createVideoCollage(videoBuffer, isGif = false) {
+    const tempVideoPath = path.join(os.tmpdir(), `vid_${Date.now()}.${isGif ? 'gif' : 'mp4'}`);
+    const outputPath = path.join(os.tmpdir(), `collage_${Date.now()}.jpg`);
+    fs.writeFileSync(tempVideoPath, videoBuffer);
+
+    try {
+        await new Promise((resolve, reject) => {
+            ffmpeg(tempVideoPath)
+                .on('end', resolve)
+                .on('error', reject)
+                // Selects 6 frames, scales them, and tiles them into a 2x3 grid
+                .outputOptions([
+                    '-vf', 'select=\'gte(n,1)\',scale=320:240,tile=2x3',
+                    '-frames:v', '1',
+                    '-q:v', '5'
+                ])
+                .save(outputPath);
+        });
+        return fs.readFileSync(outputPath);
+    } catch (err) {
+        console.error("Collage Error:", err);
+        return null;
+    } finally {
+        if (fs.existsSync(tempVideoPath)) fs.unlinkSync(tempVideoPath);
+        if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
+    }
 }
 
 // --- GENERATE CONFIG MENU ---
@@ -360,7 +389,6 @@ client.on('messageCreate', async (message) => {
 
       // AI SCANNER
       if (s.antiNsfw) {
-         // Strict threshold for Advanced mode (0.10)
          const threshold = s.nsfwMode === 'advanced' ? 0.10 : getNsfwThreshold(s.nsfwMode);
          let isUnsafe = false;
          let detectedFlag = "nsfw";
@@ -407,8 +435,9 @@ client.on('messageCreate', async (message) => {
                      apiUrl = 'https://' + apiUrl;
                  }
 
-                 if (isVideo) {
-                     const collageBuffer = await createVideoCollage(buffer);
+                 // FAST COLLAGE METHOD FOR VIDEO/GIF
+                 if (isVideo || isGif) {
+                     const collageBuffer = await createVideoCollage(buffer, isGif);
                      if (collageBuffer) {
                          const formData = new FormData(); 
                          formData.append('image', new Blob([collageBuffer], { type: 'image/jpeg' }), 'collage.jpg');
@@ -416,22 +445,8 @@ client.on('messageCreate', async (message) => {
                          const data = JSON.parse(await apiRes.text());
                          if (data.safe === false || (data.scores && (data.scores.nsfw > threshold || data.scores.sexy > threshold || data.scores.hentai > threshold || data.scores.porn > threshold))) { isUnsafe = true; detectedFlag = getTopFlag(data.scores); }
                      }
-                 } else if (isGif) { 
-                     try {
-                         const frameData = await gifFrames({ url: buffer, frames: 'all', outputType: 'jpeg', cumulative: true });
-                         if (frameData && frameData.length > 0) {
-                             const totalFrames = frameData.length; const framesToCheck = Math.min(5, totalFrames); const step = Math.floor(totalFrames / framesToCheck) || 1;
-                             for (let i = 0; i < framesToCheck; i++) {
-                                 const frame = frameData[i * step];
-                                 const frameBuffer = await new Promise((resolve, reject) => { const chunks = []; const stream = frame.getImage(); stream.on('data', (chunk) => chunks.push(chunk)); stream.on('end', () => resolve(Buffer.concat(chunks))); stream.on('error', reject); });
-                                 const formData = new FormData(); formData.append('image', new Blob([frameBuffer], { type: 'image/jpeg' }), `frame_${i}.jpg`);
-                                 const apiRes = await fetch(apiUrl + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
-                                 const data = JSON.parse(await apiRes.text());
-                                 if (data.safe === false || (data.scores && (data.scores.nsfw > threshold || data.scores.sexy > threshold || data.scores.hentai > threshold || data.scores.porn > threshold))) { isUnsafe = true; detectedFlag = getTopFlag(data.scores); break; }
-                             }
-                         }
-                     } catch (e) {}
                  } else {
+                     // NORMAL IMAGE METHOD
                      const blob = new Blob([imageBuffer], { type: contentType || 'image/jpeg' }); const formData = new FormData(); formData.append('image', blob, 'image.jpg');
                      const response = await fetch(apiUrl + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
                      const data = JSON.parse(await response.text());
