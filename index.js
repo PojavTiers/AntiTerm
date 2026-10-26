@@ -51,7 +51,6 @@ function censorWord(word) {
 
 // --- GENERATE CONFIG MENU ---
 async function generateConfigMenu(client, s, guild) {
-    // Fetching your EXACT custom emojis
     const settingsEmoji = await embeds.getEmoji(client, 'settings', '⚙️');
     const onlineEmoji = await embeds.getEmoji(client, 'online_t', '🟢');
     const offlineEmoji = await embeds.getEmoji(client, 'offline_t', '🔴');
@@ -62,7 +61,7 @@ async function generateConfigMenu(client, s, guild) {
     const userCount = s.allowedUsers ? s.allowedUsers.length : 0;
     
     const textDisplay = new TextDisplayBuilder().setContent(`
-### ${settingsEmoji} AntiTerm Configuration
+### ${settingsEmoji} AntiTerm Dashboard
 
 **NSFW Media Scanner**
 ${arrow} **Status:** ${status}
@@ -81,7 +80,7 @@ ${arrow} **Whitelisted Users:** \`${userCount}\`
     );
 
     const row2 = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('cfg_filter_add').setLabel('Add Word').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('cfg_filter_add').setLabel('Add Word(s)').setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId('cfg_filter_remove').setLabel('Remove Word').setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId('cfg_filter_list').setLabel('View Words').setStyle(ButtonStyle.Secondary)
     );
@@ -149,8 +148,13 @@ client.on('interactionCreate', async (interaction) => {
           }
 
           if (interaction.customId === 'cfg_filter_add') {
-              const modal = new ModalBuilder().setCustomId('modal_filter_add').setTitle('Add Filtered Word');
-              const input = new TextInputBuilder().setCustomId('word_input').setLabel('Word to filter').setStyle(TextInputStyle.Short).setRequired(true);
+              const modal = new ModalBuilder().setCustomId('modal_filter_add').setTitle('Add Filtered Words');
+              const input = new TextInputBuilder()
+                  .setCustomId('word_input')
+                  .setLabel('Words (Separate with commas)')
+                  .setPlaceholder('word1, word2, word3')
+                  .setStyle(TextInputStyle.Paragraph)
+                  .setRequired(true);
               modal.addComponents(new ActionRowBuilder().addComponents(input));
               return interaction.showModal(modal);
           }
@@ -212,7 +216,7 @@ client.on('interactionCreate', async (interaction) => {
       if (interaction.isStringSelectMenu()) {
           if (!isAuthorized(interaction.member, s)) return;
           
-          // Use update to prevent timeout
+          // Defer update prevents the "did not respond in time" error
           await interaction.deferUpdate();
 
           if (interaction.customId === 'select_mode') {
@@ -237,12 +241,28 @@ client.on('interactionCreate', async (interaction) => {
           const input = interaction.fields.getTextInputValue('word_input') || interaction.fields.getTextInputValue('user_id');
 
           if (interaction.customId === 'modal_filter_add') {
-              const word = input.toLowerCase().trim();
+              // Split the input by commas and clean up spaces
+              const newWords = input.split(',').map(w => w.toLowerCase().trim()).filter(w => w.length > 0);
               if (!s.words) s.words = [];
-              if (s.words.includes(word)) return interaction.editReply({ content: '❌ Word is already filtered.' });
-              s.words.push(word);
+              
+              let addedCount = 0;
+              let duplicateCount = 0;
+
+              for (const word of newWords) {
+                  if (s.words.includes(word)) {
+                      duplicateCount++;
+                  } else {
+                      s.words.push(word);
+                      addedCount++;
+                  }
+              }
+
               await s.save();
-              return interaction.editReply({ content: `✅ Added \`${word}\` to filter.` });
+              
+              let response = `✅ Successfully added **${addedCount}** word(s) to the filter.`;
+              if (duplicateCount > 0) response += `\n⚠️ Skipped **${duplicateCount}** word(s) that were already filtered.`;
+              
+              return interaction.editReply({ content: response });
           }
 
           if (interaction.customId === 'modal_filter_remove') {
@@ -374,7 +394,6 @@ client.on('messageCreate', async (message) => {
          for (let mediaUrl of mediaUrls) {
              if (isUnsafe) break;
              try {
-                 // Automatically add https:// if missing
                  let finalUrl = mediaUrl;
                  if (!finalUrl.match(/\.(jpeg|jpg|png|gif|mp4|webm)/i) && !finalUrl.includes('cdn.discordapp.com')) {
                      const webRes = await fetch(finalUrl); const html = await webRes.text();
@@ -389,7 +408,6 @@ client.on('messageCreate', async (message) => {
                  const imageBuffer = await imageResponse.arrayBuffer();
                  const buffer = Buffer.from(imageBuffer);
                  
-                 // Ensure URL has https://
                  let apiUrl = process.env.NSFW_API_URL;
                  if (!apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
                      apiUrl = 'https://' + apiUrl;
