@@ -26,6 +26,7 @@ const client = new Client({
   ],
 });
 
+// FIXED: Safely checks scores, defaults to 'nsfw' if specific flags are missing
 function getTopFlag(scores) {
     if (!scores) return "nsfw";
     const flags = ['porn', 'hentai', 'sexy', 'nsfw', 'drawings'];
@@ -423,28 +424,44 @@ client.on('messageCreate', async (message) => {
                      apiUrl = 'https://' + apiUrl;
                  }
 
+                 // FIXED: Centralized scanning logic for both Collages and normal images
+                 const scanImage = async (imageBlob) => {
+                     const formData = new FormData(); 
+                     formData.append('image', imageBlob, 'image.jpg');
+                     
+                     const apiRes = await fetch(apiUrl + '/detect', { method: 'POST', body: formData });
+                     const rawData = await apiRes.text();
+                     console.log(`[SCANNER] RAW API RESPONSE:`, rawData);
+                     
+                     try {
+                         const data = JSON.parse(rawData);
+                         // Check if the API explicitly flags it as NSFW OR if specific scores exceed the threshold
+                         if (data.nsfw === true || (data.scores && (
+                             (data.scores.nsfw && data.scores.nsfw > threshold) || 
+                             (data.scores.porn && data.scores.porn > threshold) ||
+                             (data.scores.sexy && data.scores.sexy > threshold) || 
+                             (data.scores.hentai && data.scores.hentai > threshold) || 
+                             (data.scores.drawings && data.scores.drawings > threshold)
+                         ))) { 
+                             isUnsafe = true; 
+                             detectedFlag = getTopFlag(data.scores); 
+                         }
+                     } catch(e) {
+                         console.error("Failed to parse API JSON:", e);
+                     }
+                 };
+
                  // FAST COLLAGE METHOD FOR VIDEO/GIF
                  if (isVideo || isGif) {
                      const collageBuffer = await createVideoCollage(buffer, isGif);
                      if (collageBuffer) {
-                         const formData = new FormData(); 
-                         formData.append('image', new Blob([collageBuffer], { type: 'image/jpeg' }), 'collage.jpg');
                          console.log(`[SCANNER] Sending COLLAGE to ${apiUrl}/detect`);
-                         const apiRes = await fetch(apiUrl + '/detect', { method: 'POST', body: formData });
-                         const rawData = await apiRes.text();
-                         console.log(`[SCANNER] RAW API RESPONSE:`, rawData);
-                         const data = JSON.parse(rawData);
-                         if (data.safe === false || (data.scores && (data.scores.nsfw > threshold || data.scores.sexy > threshold || data.scores.hentai > threshold || data.scores.porn > threshold || data.scores.drawings > threshold))) { isUnsafe = true; detectedFlag = getTopFlag(data.scores); }
+                         await scanImage(new Blob([collageBuffer], { type: 'image/jpeg' }));
                      }
                  } else {
                      // NORMAL IMAGE METHOD
-                     const blob = new Blob([imageBuffer], { type: contentType || 'image/jpeg' }); const formData = new FormData(); formData.append('image', blob, 'image.jpg');
                      console.log(`[SCANNER] Sending IMAGE to ${apiUrl}/detect`);
-                     const response = await fetch(apiUrl + '/detect', { method: 'POST', body: formData });
-                     const rawData = await response.text();
-                     console.log(`[SCANNER] RAW API RESPONSE:`, rawData);
-                     const data = JSON.parse(rawData);
-                     if (data.safe === false || (data.flags && data.flags.length > 0) || (data.scores && ((data.scores.nsfw > threshold) || (data.scores.sexy > threshold) || (data.scores.hentai > threshold) || (data.scores.porn > threshold) || (data.scores.drawings > threshold)))) { isUnsafe = true; detectedFlag = getTopFlag(data.scores); }
+                     await scanImage(new Blob([imageBuffer], { type: contentType || 'image/jpeg' }));
                  }
              } catch (err) { console.error("Scanner Error:", err); }
          }
