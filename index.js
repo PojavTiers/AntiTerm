@@ -2,7 +2,6 @@ const { Client, GatewayIntentBits, ComponentType, MessageFlags, ActionRowBuilder
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegPath = require('ffmpeg-static');
 const ffprobePath = require('ffprobe-static').path;
-const gifFrames = require('gif-frames');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -29,7 +28,7 @@ const client = new Client({
 
 function getTopFlag(scores) {
     if (!scores) return "nsfw";
-    const flags = ['porn', 'hentai', 'sexy', 'nsfw'];
+    const flags = ['porn', 'hentai', 'sexy', 'nsfw', 'drawings'];
     let highest = "nsfw";
     let maxScore = 0;
     for (const flag of flags) {
@@ -38,6 +37,7 @@ function getTopFlag(scores) {
             highest = flag;
         }
     }
+    if (highest === 'drawings') return 'hentai';
     return highest;
 }
 
@@ -60,7 +60,6 @@ async function createVideoCollage(videoBuffer, isGif = false) {
             ffmpeg(tempVideoPath)
                 .on('end', resolve)
                 .on('error', reject)
-                // Selects 6 frames, scales them, and tiles them into a 2x3 grid
                 .outputOptions([
                     '-vf', 'select=\'gte(n,1)\',scale=320:240,tile=2x3',
                     '-frames:v', '1',
@@ -441,16 +440,16 @@ client.on('messageCreate', async (message) => {
                      if (collageBuffer) {
                          const formData = new FormData(); 
                          formData.append('image', new Blob([collageBuffer], { type: 'image/jpeg' }), 'collage.jpg');
-                         const apiRes = await fetch(apiUrl + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
+                         const apiRes = await fetch(apiUrl + '/detect', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
                          const data = JSON.parse(await apiRes.text());
-                         if (data.safe === false || (data.scores && (data.scores.nsfw > threshold || data.scores.sexy > threshold || data.scores.hentai > threshold || data.scores.porn > threshold))) { isUnsafe = true; detectedFlag = getTopFlag(data.scores); }
+                         if (data.safe === false || (data.scores && (data.scores.nsfw > threshold || data.scores.sexy > threshold || data.scores.hentai > threshold || data.scores.porn > threshold || data.scores.drawings > threshold))) { isUnsafe = true; detectedFlag = getTopFlag(data.scores); }
                      }
                  } else {
                      // NORMAL IMAGE METHOD
                      const blob = new Blob([imageBuffer], { type: contentType || 'image/jpeg' }); const formData = new FormData(); formData.append('image', blob, 'image.jpg');
-                     const response = await fetch(apiUrl + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
+                     const response = await fetch(apiUrl + '/detect', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
                      const data = JSON.parse(await response.text());
-                     if (data.safe === false || (data.flags && data.flags.length > 0) || (data.scores && ((data.scores.nsfw > threshold) || (data.scores.sexy > threshold) || (data.scores.hentai > threshold) || (data.scores.porn > threshold)))) { isUnsafe = true; detectedFlag = getTopFlag(data.scores); }
+                     if (data.safe === false || (data.flags && data.flags.length > 0) || (data.scores && ((data.scores.nsfw > threshold) || (data.scores.sexy > threshold) || (data.scores.hentai > threshold) || (data.scores.porn > threshold) || (data.scores.drawings > threshold)))) { isUnsafe = true; detectedFlag = getTopFlag(data.scores); }
                  }
              } catch (err) { console.error("Scanner Error:", err); }
          }
