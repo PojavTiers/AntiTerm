@@ -440,14 +440,16 @@ client.on('messageCreate', async (message) => {
                      if (collageBuffer) {
                          const formData = new FormData(); 
                          formData.append('image', new Blob([collageBuffer], { type: 'image/jpeg' }), 'collage.jpg');
-                         const apiRes = await fetch(apiUrl + '/detect', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
+                         // NO AUTH HEADER FOR OPEN API
+                         const apiRes = await fetch(apiUrl + '/detect', { method: 'POST', body: formData });
                          const data = JSON.parse(await apiRes.text());
                          if (data.safe === false || (data.scores && (data.scores.nsfw > threshold || data.scores.sexy > threshold || data.scores.hentai > threshold || data.scores.porn > threshold || data.scores.drawings > threshold))) { isUnsafe = true; detectedFlag = getTopFlag(data.scores); }
                      }
                  } else {
                      // NORMAL IMAGE METHOD
                      const blob = new Blob([imageBuffer], { type: contentType || 'image/jpeg' }); const formData = new FormData(); formData.append('image', blob, 'image.jpg');
-                     const response = await fetch(apiUrl + '/detect', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
+                     // NO AUTH HEADER FOR OPEN API
+                     const response = await fetch(apiUrl + '/detect', { method: 'POST', body: formData });
                      const data = JSON.parse(await response.text());
                      if (data.safe === false || (data.flags && data.flags.length > 0) || (data.scores && ((data.scores.nsfw > threshold) || (data.scores.sexy > threshold) || (data.scores.hentai > threshold) || (data.scores.porn > threshold) || (data.scores.drawings > threshold)))) { isUnsafe = true; detectedFlag = getTopFlag(data.scores); }
                  }
