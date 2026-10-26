@@ -26,7 +26,6 @@ const client = new Client({
   ],
 });
 
-// FIXED: Safely checks scores, defaults to 'nsfw' if specific flags are missing
 function getTopFlag(scores) {
     if (!scores) return "nsfw";
     const flags = ['porn', 'hentai', 'sexy', 'nsfw', 'drawings'];
@@ -378,7 +377,8 @@ client.on('messageCreate', async (message) => {
 
       // AI SCANNER
       if (s.antiNsfw) {
-         const threshold = s.nsfwMode === 'advanced' ? 0.10 : getNsfwThreshold(s.nsfwMode);
+         // FIXED: Dropped advanced threshold to 0.01 to catch highly suggestive images
+         const threshold = s.nsfwMode === 'advanced' ? 0.01 : getNsfwThreshold(s.nsfwMode);
          let isUnsafe = false;
          let detectedFlag = "nsfw";
          let mediaUrls = []; 
@@ -424,18 +424,20 @@ client.on('messageCreate', async (message) => {
                      apiUrl = 'https://' + apiUrl;
                  }
 
-                 // FIXED: Centralized scanning logic for both Collages and normal images
                  const scanImage = async (imageBlob) => {
                      const formData = new FormData(); 
                      formData.append('image', imageBlob, 'image.jpg');
                      
                      const apiRes = await fetch(apiUrl + '/detect', { method: 'POST', body: formData });
                      const rawData = await apiRes.text();
-                     console.log(`[SCANNER] RAW API RESPONSE:`, rawData);
                      
                      try {
                          const data = JSON.parse(rawData);
-                         // Check if the API explicitly flags it as NSFW OR if specific scores exceed the threshold
+                         
+                         // FIXED: Added detailed console logging to debug exactly what the API sees
+                         console.log(`[SCANNER DEBUG] Threshold: ${threshold}`);
+                         console.log(`[SCANNER DEBUG] API Scores:`, data.scores);
+                         
                          if (data.nsfw === true || (data.scores && (
                              (data.scores.nsfw && data.scores.nsfw > threshold) || 
                              (data.scores.porn && data.scores.porn > threshold) ||
@@ -445,13 +447,15 @@ client.on('messageCreate', async (message) => {
                          ))) { 
                              isUnsafe = true; 
                              detectedFlag = getTopFlag(data.scores); 
+                             console.log(`[SCANNER DEBUG] FLAGGED AS NSFW! Flag: ${detectedFlag}`);
+                         } else {
+                             console.log(`[SCANNER DEBUG] Passed. Image deemed SAFE.`);
                          }
                      } catch(e) {
                          console.error("Failed to parse API JSON:", e);
                      }
                  };
 
-                 // FAST COLLAGE METHOD FOR VIDEO/GIF
                  if (isVideo || isGif) {
                      const collageBuffer = await createVideoCollage(buffer, isGif);
                      if (collageBuffer) {
@@ -459,7 +463,6 @@ client.on('messageCreate', async (message) => {
                          await scanImage(new Blob([collageBuffer], { type: 'image/jpeg' }));
                      }
                  } else {
-                     // NORMAL IMAGE METHOD
                      console.log(`[SCANNER] Sending IMAGE to ${apiUrl}/detect`);
                      await scanImage(new Blob([imageBuffer], { type: contentType || 'image/jpeg' }));
                  }
