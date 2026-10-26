@@ -49,14 +49,13 @@ function censorWord(word) {
     return word;
 }
 
-// --- GENERATE CONFIG MENU ---
+// --- GENERATE CONFIG MENU (Professional) ---
 async function generateConfigMenu(client, s, guild) {
     const settingsEmoji = await embeds.getEmoji(client, 'settings', '⚙️');
     const onlineEmoji = await embeds.getEmoji(client, 'online_t', '🟢');
     const offlineEmoji = await embeds.getEmoji(client, 'offline_t', '🔴');
     const arrow = await embeds.getEmoji(client, 'arrow_long', '➜');
     
-    // Fetch custom emojis for dropdown
     const toggleEmoji = await embeds.getButtonEmoji(client, 'toggle', '🔘');
     const brainEmoji = await embeds.getButtonEmoji(client, 'brain', '🧠');
     const scalesEmoji = await embeds.getButtonEmoji(client, 'scales', '⚖️');
@@ -86,7 +85,6 @@ ${arrow} **Whitelisted Users:** \`${userCount}\`
 *Select an option from the menu below to configure.*
     `);
 
-    // ONE Single Dropdown to rule them all
     const selectMenu = new StringSelectMenuBuilder()
         .setCustomId('config_menu')
         .setPlaceholder('Select a setting to configure...')
@@ -151,6 +149,8 @@ client.on('interactionCreate', async (interaction) => {
           if (!isAuthorized(interaction.member, s)) return interaction.reply({ content: '❌ No permission.', ephemeral: true });
           
           const action = interaction.values[0];
+          
+          // IMPORTANT: Acknowledge the interaction immediately so it doesn't time out
           await interaction.deferUpdate();
 
           if (action === 'action_toggle_nsfw') {
@@ -181,7 +181,7 @@ client.on('interactionCreate', async (interaction) => {
               const modal = new ModalBuilder().setCustomId('modal_filter_add').setTitle('Add Filtered Words');
               const input = new TextInputBuilder().setCustomId('word_input').setLabel('Words (Separate with commas)').setPlaceholder('word1, word2, word3').setStyle(TextInputStyle.Paragraph).setRequired(true);
               modal.addComponents(new ActionRowBuilder().addComponents(input));
-              return interaction.showModal(modal);
+              return interaction.showModal(modal); // Show modal instantly after deferUpdate
           }
 
           if (action === 'action_remove_word') {
@@ -220,7 +220,7 @@ client.on('interactionCreate', async (interaction) => {
           }
       }
 
-      // 2. SECONDARY SELECT MENU HANDLERS (Mode & Punishment)
+      // 2. SECONDARY SELECT MENU HANDLERS
       if (interaction.isStringSelectMenu() && (interaction.customId === 'select_mode' || interaction.customId === 'select_punish')) {
           if (!isAuthorized(interaction.member, s)) return;
           await interaction.deferUpdate();
