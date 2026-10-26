@@ -56,6 +56,17 @@ async function generateConfigMenu(client, s, guild) {
     const offlineEmoji = await embeds.getEmoji(client, 'offline_t', '🔴');
     const arrow = await embeds.getEmoji(client, 'arrow_long', '➜');
     
+    // Fetch custom emojis for dropdown
+    const toggleEmoji = await embeds.getButtonEmoji(client, 'toggle', '🔘');
+    const brainEmoji = await embeds.getButtonEmoji(client, 'brain', '🧠');
+    const scalesEmoji = await embeds.getButtonEmoji(client, 'scales', '⚖️');
+    const addEmoji = await embeds.getButtonEmoji(client, 'add', '📝');
+    const removeEmoji = await embeds.getButtonEmoji(client, 'remove', '🗑️');
+    const listEmoji = await embeds.getButtonEmoji(client, 'list', '📋');
+    const userAddEmoji = await embeds.getButtonEmoji(client, 'user_add', '👤');
+    const userRemoveEmoji = await embeds.getButtonEmoji(client, 'user_remove', '❌');
+    const usersEmoji = await embeds.getButtonEmoji(client, 'users', '👥');
+
     const status = s.antiNsfw ? `${onlineEmoji} **Enabled**` : `${offlineEmoji} **Disabled**`;
     const wordCount = s.words ? s.words.length : 0;
     const userCount = s.allowedUsers ? s.allowedUsers.length : 0;
@@ -80,15 +91,15 @@ ${arrow} **Whitelisted Users:** \`${userCount}\`
         .setCustomId('config_menu')
         .setPlaceholder('Select a setting to configure...')
         .addOptions([
-            { label: 'Toggle Scanner', description: 'Turn the NSFW media scanner on or off', value: 'action_toggle_nsfw', emoji: '🔘' },
-            { label: 'Scanner Mode', description: 'Change the AI strictness (Basic, Moderate, Advanced)', value: 'action_mode', emoji: '🧠' },
-            { label: 'Punishment', description: 'Set what happens to rule breakers', value: 'action_punish', emoji: '⚖️' },
-            { label: 'Add Filter Words', description: 'Add words to the unbypassable text filter', value: 'action_add_word', emoji: '📝' },
-            { label: 'Remove Filter Word', description: 'Remove a word from the text filter', value: 'action_remove_word', emoji: '🗑️' },
-            { label: 'View Filtered Words', description: 'See all currently blocked words', value: 'action_list_words', emoji: '📋' },
-            { label: 'Add Whitelisted User', description: 'Allow a user to configure the bot', value: 'action_add_user', emoji: '👤' },
-            { label: 'Remove Whitelisted User', description: 'Revoke a user\'s access to the bot', value: 'action_remove_user', emoji: '❌' },
-            { label: 'View Whitelisted Users', description: 'See who can configure the bot', value: 'action_list_users', emoji: '👥' },
+            { label: 'Toggle Scanner', description: 'Turn the NSFW media scanner on or off', value: 'action_toggle_nsfw', emoji: toggleEmoji },
+            { label: 'Scanner Mode', description: 'Change the AI strictness (Basic, Moderate, Advanced)', value: 'action_mode', emoji: brainEmoji },
+            { label: 'Punishment', description: 'Set what happens to rule breakers', value: 'action_punish', emoji: scalesEmoji },
+            { label: 'Add Filter Words', description: 'Add words to the unbypassable text filter', value: 'action_add_word', emoji: addEmoji },
+            { label: 'Remove Filter Word', description: 'Remove a word from the text filter', value: 'action_remove_word', emoji: removeEmoji },
+            { label: 'View Filtered Words', description: 'See all currently blocked words', value: 'action_list_words', emoji: listEmoji },
+            { label: 'Add Whitelisted User', description: 'Allow a user to configure the bot', value: 'action_add_user', emoji: userAddEmoji },
+            { label: 'Remove Whitelisted User', description: 'Revoke a user\'s access to the bot', value: 'action_remove_user', emoji: userRemoveEmoji },
+            { label: 'View Whitelisted Users', description: 'See who can configure the bot', value: 'action_list_users', emoji: usersEmoji },
         ]);
 
     const row = new ActionRowBuilder().addComponents(selectMenu);
