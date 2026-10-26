@@ -71,32 +71,32 @@ ${arrow} **Punishment:** \`${s.nsfwPunish.toUpperCase()}\`
 **Text Filter**
 ${arrow} **Filtered Words:** \`${wordCount}\`
 ${arrow} **Whitelisted Users:** \`${userCount}\`
+
+*Select an option from the menu below to configure.*
     `);
 
-    const row1 = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('cfg_toggle_nsfw').setLabel('Toggle Scanner').setStyle(s.antiNsfw ? ButtonStyle.Danger : ButtonStyle.Success),
-        new ButtonBuilder().setCustomId('cfg_mode').setLabel('Scanner Mode').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId('cfg_punish').setLabel('Punishment').setStyle(ButtonStyle.Primary)
-    );
+    // ONE Single Dropdown to rule them all
+    const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId('config_menu')
+        .setPlaceholder('Select a setting to configure...')
+        .addOptions([
+            { label: 'Toggle Scanner', description: 'Turn the NSFW media scanner on or off', value: 'action_toggle_nsfw', emoji: '🔘' },
+            { label: 'Scanner Mode', description: 'Change the AI strictness (Basic, Moderate, Advanced)', value: 'action_mode', emoji: '🧠' },
+            { label: 'Punishment', description: 'Set what happens to rule breakers', value: 'action_punish', emoji: '⚖️' },
+            { label: 'Add Filter Words', description: 'Add words to the unbypassable text filter', value: 'action_add_word', emoji: '📝' },
+            { label: 'Remove Filter Word', description: 'Remove a word from the text filter', value: 'action_remove_word', emoji: '🗑️' },
+            { label: 'View Filtered Words', description: 'See all currently blocked words', value: 'action_list_words', emoji: '📋' },
+            { label: 'Add Whitelisted User', description: 'Allow a user to configure the bot', value: 'action_add_user', emoji: '👤' },
+            { label: 'Remove Whitelisted User', description: 'Revoke a user\'s access to the bot', value: 'action_remove_user', emoji: '❌' },
+            { label: 'View Whitelisted Users', description: 'See who can configure the bot', value: 'action_list_users', emoji: '👥' },
+        ]);
 
-    const row2 = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('cfg_filter_add').setLabel('Add Word(s)').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('cfg_filter_remove').setLabel('Remove Word').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('cfg_filter_list').setLabel('View Words').setStyle(ButtonStyle.Secondary)
-    );
-
-    const row3 = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('cfg_user_add').setLabel('Add User').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('cfg_user_remove').setLabel('Remove User').setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId('cfg_user_list').setLabel('View Users').setStyle(ButtonStyle.Secondary)
-    );
+    const row = new ActionRowBuilder().addComponents(selectMenu);
 
     return new ContainerBuilder()
         .addTextDisplayComponents(textDisplay)
         .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(1))
-        .addActionRowComponents(row1)
-        .addActionRowComponents(row2)
-        .addActionRowComponents(row3);
+        .addActionRowComponents(row);
 }
 
 client.once('clientReady', async () => {
@@ -135,102 +135,99 @@ client.on('interactionCreate', async (interaction) => {
   try {
       const s = await getSettings(interaction.guild.id);
 
-      // 1. BUTTON HANDLERS
-      if (interaction.isButton()) {
+      // 1. MAIN CONFIG DROPDOWN HANDLER
+      if (interaction.isStringSelectMenu() && interaction.customId === 'config_menu') {
           if (!isAuthorized(interaction.member, s)) return interaction.reply({ content: '❌ No permission.', ephemeral: true });
+          
+          const action = interaction.values[0];
+          await interaction.deferUpdate();
 
-          if (interaction.customId === 'cfg_toggle_nsfw') {
-              await interaction.deferUpdate();
+          if (action === 'action_toggle_nsfw') {
               s.antiNsfw = !s.antiNsfw;
               await s.save();
               const menu = await generateConfigMenu(client, s, interaction.guild);
               return interaction.editReply({ components: [menu], flags: MessageFlags.IsComponentsV2 });
           }
 
-          if (interaction.customId === 'cfg_filter_add') {
+          if (action === 'action_mode') {
+              const modeSelect = new StringSelectMenuBuilder().setCustomId('select_mode').setPlaceholder('Select a mode').addOptions([
+                  { label: 'Basic', description: 'Only hardcore porn', value: 'basic' },
+                  { label: 'Moderate', description: 'Standard filtering', value: 'moderate' },
+                  { label: 'Advanced', description: 'Strict (bikinis, suggestive)', value: 'advanced' }
+              ]);
+              return interaction.followUp({ content: 'Select the new mode:', components: [new ActionRowBuilder().addComponents(modeSelect)], ephemeral: true });
+          }
+
+          if (action === 'action_punish') {
+              const punishSelect = new StringSelectMenuBuilder().setCustomId('select_punish').setPlaceholder('Select a punishment').addOptions([
+                  { label: 'Delete', value: 'delete' }, { label: 'Mute', value: 'mute' },
+                  { label: 'Kick', value: 'kick' }, { label: 'Ban', value: 'ban' }
+              ]);
+              return interaction.followUp({ content: 'Select the punishment:', components: [new ActionRowBuilder().addComponents(punishSelect)], ephemeral: true });
+          }
+
+          if (action === 'action_add_word') {
               const modal = new ModalBuilder().setCustomId('modal_filter_add').setTitle('Add Filtered Words');
-              const input = new TextInputBuilder()
-                  .setCustomId('word_input')
-                  .setLabel('Words (Separate with commas)')
-                  .setPlaceholder('word1, word2, word3')
-                  .setStyle(TextInputStyle.Paragraph)
-                  .setRequired(true);
+              const input = new TextInputBuilder().setCustomId('word_input').setLabel('Words (Separate with commas)').setPlaceholder('word1, word2, word3').setStyle(TextInputStyle.Paragraph).setRequired(true);
               modal.addComponents(new ActionRowBuilder().addComponents(input));
               return interaction.showModal(modal);
           }
 
-          if (interaction.customId === 'cfg_filter_remove') {
-              if (!s.words || s.words.length === 0) return interaction.reply({ content: '❌ No words to remove.', ephemeral: true });
+          if (action === 'action_remove_word') {
+              if (!s.words || s.words.length === 0) return interaction.followUp({ content: '❌ No words to remove.', ephemeral: true });
               const modal = new ModalBuilder().setCustomId('modal_filter_remove').setTitle('Remove Filtered Word');
               const input = new TextInputBuilder().setCustomId('word_input').setLabel('Word to remove').setStyle(TextInputStyle.Short).setRequired(true);
               modal.addComponents(new ActionRowBuilder().addComponents(input));
               return interaction.showModal(modal);
           }
 
-          if (interaction.customId === 'cfg_user_add') {
-              if (interaction.user.id !== interaction.guild.ownerId && interaction.user.id !== OWNER_ID) return interaction.reply({ content: '❌ Only the Server Owner can manage whitelisted users.', ephemeral: true });
+          if (action === 'action_list_words') {
+              const words = s.words && s.words.length > 0 ? s.words.map(w => `\`${w}\``).join(', ') : 'None';
+              return interaction.followUp({ content: `➜ **Filtered Words:** ${words}`, ephemeral: true });
+          }
+
+          if (action === 'action_add_user') {
+              if (interaction.user.id !== interaction.guild.ownerId && interaction.user.id !== OWNER_ID) return interaction.followUp({ content: '❌ Only the Server Owner can manage whitelisted users.', ephemeral: true });
               const modal = new ModalBuilder().setCustomId('modal_user_add').setTitle('Add Whitelisted User');
               const input = new TextInputBuilder().setCustomId('user_id').setLabel('User ID').setStyle(TextInputStyle.Short).setRequired(true);
               modal.addComponents(new ActionRowBuilder().addComponents(input));
               return interaction.showModal(modal);
           }
 
-          if (interaction.customId === 'cfg_user_remove') {
-              if (interaction.user.id !== interaction.guild.ownerId && interaction.user.id !== OWNER_ID) return interaction.reply({ content: '❌ Only the Server Owner can manage whitelisted users.', ephemeral: true });
-              if (!s.allowedUsers || s.allowedUsers.length === 0) return interaction.reply({ content: '❌ No users to remove.', ephemeral: true });
+          if (action === 'action_remove_user') {
+              if (interaction.user.id !== interaction.guild.ownerId && interaction.user.id !== OWNER_ID) return interaction.followUp({ content: '❌ Only the Server Owner can manage whitelisted users.', ephemeral: true });
+              if (!s.allowedUsers || s.allowedUsers.length === 0) return interaction.followUp({ content: '❌ No users to remove.', ephemeral: true });
               const modal = new ModalBuilder().setCustomId('modal_user_remove').setTitle('Remove Whitelisted User');
               const input = new TextInputBuilder().setCustomId('user_id').setLabel('User ID').setStyle(TextInputStyle.Short).setRequired(true);
               modal.addComponents(new ActionRowBuilder().addComponents(input));
               return interaction.showModal(modal);
           }
 
-          if (interaction.customId === 'cfg_filter_list') {
-              const words = s.words && s.words.length > 0 ? s.words.map(w => `\`${w}\``).join(', ') : 'None';
-              return interaction.reply({ content: `➜ **Filtered Words:** ${words}`, ephemeral: true });
-          }
-
-          if (interaction.customId === 'cfg_user_list') {
+          if (action === 'action_list_users') {
               const users = s.allowedUsers && s.allowedUsers.length > 0 ? s.allowedUsers.map(id => `<@${id}>`).join(', ') : 'None';
-              return interaction.reply({ content: `➜ **Whitelisted Users:** ${users}`, ephemeral: true });
-          }
-
-          if (interaction.customId === 'cfg_mode') {
-              const select = new StringSelectMenuBuilder().setCustomId('select_mode').setPlaceholder('Select a mode').addOptions([
-                  { label: 'Basic', description: 'Only hardcore porn', value: 'basic' },
-                  { label: 'Moderate', description: 'Standard filtering', value: 'moderate' },
-                  { label: 'Advanced', description: 'Strict (suggestive content)', value: 'advanced' }
-              ]);
-              return interaction.reply({ content: 'Select the new mode:', components: [new ActionRowBuilder().addComponents(select)], ephemeral: true });
-          }
-
-          if (interaction.customId === 'cfg_punish') {
-              const select = new StringSelectMenuBuilder().setCustomId('select_punish').setPlaceholder('Select a punishment').addOptions([
-                  { label: 'Delete', value: 'delete' }, { label: 'Mute', value: 'mute' },
-                  { label: 'Kick', value: 'kick' }, { label: 'Ban', value: 'ban' }
-              ]);
-              return interaction.reply({ content: 'Select the punishment:', components: [new ActionRowBuilder().addComponents(select)], ephemeral: true });
+              return interaction.followUp({ content: `➜ **Whitelisted Users:** ${users}`, ephemeral: true });
           }
       }
 
-      // 2. SELECT MENU HANDLERS
-      if (interaction.isStringSelectMenu()) {
+      // 2. SECONDARY SELECT MENU HANDLERS (Mode & Punishment)
+      if (interaction.isStringSelectMenu() && (interaction.customId === 'select_mode' || interaction.customId === 'select_punish')) {
           if (!isAuthorized(interaction.member, s)) return;
-          
-          // Defer update prevents the "did not respond in time" error
           await interaction.deferUpdate();
 
           if (interaction.customId === 'select_mode') {
               s.nsfwMode = interaction.values[0];
               await s.save();
               const menu = await generateConfigMenu(client, s, interaction.guild);
-              return interaction.editReply({ components: [menu], flags: MessageFlags.IsComponentsV2 });
+              await interaction.editReply({ components: [menu], flags: MessageFlags.IsComponentsV2 });
+              return interaction.followUp({ content: `✅ Mode changed to **${s.nsfwMode.toUpperCase()}**`, ephemeral: true });
           }
 
           if (interaction.customId === 'select_punish') {
               s.nsfwPunish = interaction.values[0];
               await s.save();
               const menu = await generateConfigMenu(client, s, interaction.guild);
-              return interaction.editReply({ components: [menu], flags: MessageFlags.IsComponentsV2 });
+              await interaction.editReply({ components: [menu], flags: MessageFlags.IsComponentsV2 });
+              return interaction.followUp({ content: `✅ Punishment changed to **${s.nsfwPunish.toUpperCase()}**`, ephemeral: true });
           }
       }
 
@@ -241,7 +238,6 @@ client.on('interactionCreate', async (interaction) => {
           const input = interaction.fields.getTextInputValue('word_input') || interaction.fields.getTextInputValue('user_id');
 
           if (interaction.customId === 'modal_filter_add') {
-              // Split the input by commas and clean up spaces
               const newWords = input.split(',').map(w => w.toLowerCase().trim()).filter(w => w.length > 0);
               if (!s.words) s.words = [];
               
@@ -256,12 +252,10 @@ client.on('interactionCreate', async (interaction) => {
                       addedCount++;
                   }
               }
-
               await s.save();
               
               let response = `✅ Successfully added **${addedCount}** word(s) to the filter.`;
-              if (duplicateCount > 0) response += `\n⚠️ Skipped **${duplicateCount}** word(s) that were already filtered.`;
-              
+              if (duplicateCount > 0) response += `\n⚠️ Skipped **${duplicateCount}** word(s) already filtered.`;
               return interaction.editReply({ content: response });
           }
 
@@ -367,7 +361,7 @@ client.on('messageCreate', async (message) => {
 
       // AI SCANNER
       if (s.antiNsfw) {
-         const threshold = getNsfwThreshold(s.nsfwMode);
+         const threshold = s.nsfwMode === 'advanced' ? 0.15 : getNsfwThreshold(s.nsfwMode);
          let isUnsafe = false;
          let detectedFlag = "nsfw";
          let mediaUrls = []; 
