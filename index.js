@@ -139,7 +139,6 @@ client.on('interactionCreate', async (interaction) => {
           
           const action = interaction.values[0];
 
-          // If action requires a Modal, we MUST show it immediately without deferring
           if (action === 'action_add_word') {
               const modal = new ModalBuilder().setCustomId('modal_filter_add').setTitle('Add Filtered Words');
               const input = new TextInputBuilder().setCustomId('word_input').setLabel('Words (Separate with commas)').setPlaceholder('word1, word2, word3').setStyle(TextInputStyle.Paragraph).setRequired(true);
@@ -172,7 +171,6 @@ client.on('interactionCreate', async (interaction) => {
               return interaction.showModal(modal);
           }
 
-          // For settings that don't require a Modal, we use deferUpdate + editReply
           await interaction.deferUpdate();
 
           if (action === 'action_toggle_nsfw') {
@@ -362,7 +360,8 @@ client.on('messageCreate', async (message) => {
 
       // AI SCANNER
       if (s.antiNsfw) {
-         const threshold = s.nsfwMode === 'advanced' ? 0.15 : getNsfwThreshold(s.nsfwMode);
+         // Strict threshold for Advanced mode (0.10)
+         const threshold = s.nsfwMode === 'advanced' ? 0.10 : getNsfwThreshold(s.nsfwMode);
          let isUnsafe = false;
          let detectedFlag = "nsfw";
          let mediaUrls = []; 
