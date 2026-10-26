@@ -49,7 +49,6 @@ function censorWord(word) {
     return word;
 }
 
-// --- FAST COLLAGE GENERATOR (GIFs & Videos) ---
 async function createVideoCollage(videoBuffer, isGif = false) {
     const tempVideoPath = path.join(os.tmpdir(), `vid_${Date.now()}.${isGif ? 'gif' : 'mp4'}`);
     const outputPath = path.join(os.tmpdir(), `collage_${Date.now()}.jpg`);
@@ -60,11 +59,7 @@ async function createVideoCollage(videoBuffer, isGif = false) {
             ffmpeg(tempVideoPath)
                 .on('end', resolve)
                 .on('error', reject)
-                .outputOptions([
-                    '-vf', 'select=\'gte(n,1)\',scale=320:240,tile=2x3',
-                    '-frames:v', '1',
-                    '-q:v', '5'
-                ])
+                .outputOptions(['-vf', 'select=\'gte(n,1)\',scale=320:240,tile=2x3', '-frames:v', '1', '-q:v', '5'])
                 .save(outputPath);
         });
         return fs.readFileSync(outputPath);
@@ -77,7 +72,6 @@ async function createVideoCollage(videoBuffer, isGif = false) {
     }
 }
 
-// --- GENERATE CONFIG MENU ---
 async function generateConfigMenu(client, s, guild) {
     const settingsEmoji = await embeds.getEmoji(client, 'settings', '⚙️');
     const onlineEmoji = await embeds.getEmoji(client, 'online_t', '🟢');
@@ -154,14 +148,12 @@ client.on('guildCreate', async (guild) => {
     }
 });
 
-// --- INTERACTION HANDLER ---
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.guild) return;
   
   try {
       const s = await getSettings(interaction.guild.id);
 
-      // 1. MAIN CONFIG DROPDOWN HANDLER
       if (interaction.isStringSelectMenu() && interaction.customId === 'config_menu') {
           if (!isAuthorized(interaction.member, s)) return interaction.reply({ content: '❌ No permission.', ephemeral: true });
           
@@ -236,7 +228,6 @@ client.on('interactionCreate', async (interaction) => {
           }
       }
 
-      // 2. SECONDARY SELECT MENU HANDLERS
       if (interaction.isStringSelectMenu() && (interaction.customId === 'select_mode' || interaction.customId === 'select_punish')) {
           if (!isAuthorized(interaction.member, s)) return;
           await interaction.deferUpdate();
@@ -258,7 +249,6 @@ client.on('interactionCreate', async (interaction) => {
           }
       }
 
-      // 3. MODAL SUBMIT HANDLERS
       if (interaction.isModalSubmit()) {
           if (!isAuthorized(interaction.member, s)) return;
           await interaction.deferReply({ ephemeral: true });
@@ -316,7 +306,6 @@ client.on('interactionCreate', async (interaction) => {
           }
       }
 
-      // 4. SLASH COMMANDS
       if (interaction.isChatInputCommand()) {
           if (interaction.commandName === 'config') {
               await interaction.deferReply();
@@ -440,17 +429,21 @@ client.on('messageCreate', async (message) => {
                      if (collageBuffer) {
                          const formData = new FormData(); 
                          formData.append('image', new Blob([collageBuffer], { type: 'image/jpeg' }), 'collage.jpg');
-                         // NO AUTH HEADER FOR OPEN API
+                         console.log(`[SCANNER] Sending COLLAGE to ${apiUrl}/detect`);
                          const apiRes = await fetch(apiUrl + '/detect', { method: 'POST', body: formData });
-                         const data = JSON.parse(await apiRes.text());
+                         const rawData = await apiRes.text();
+                         console.log(`[SCANNER] RAW API RESPONSE:`, rawData);
+                         const data = JSON.parse(rawData);
                          if (data.safe === false || (data.scores && (data.scores.nsfw > threshold || data.scores.sexy > threshold || data.scores.hentai > threshold || data.scores.porn > threshold || data.scores.drawings > threshold))) { isUnsafe = true; detectedFlag = getTopFlag(data.scores); }
                      }
                  } else {
                      // NORMAL IMAGE METHOD
                      const blob = new Blob([imageBuffer], { type: contentType || 'image/jpeg' }); const formData = new FormData(); formData.append('image', blob, 'image.jpg');
-                     // NO AUTH HEADER FOR OPEN API
+                     console.log(`[SCANNER] Sending IMAGE to ${apiUrl}/detect`);
                      const response = await fetch(apiUrl + '/detect', { method: 'POST', body: formData });
-                     const data = JSON.parse(await response.text());
+                     const rawData = await response.text();
+                     console.log(`[SCANNER] RAW API RESPONSE:`, rawData);
+                     const data = JSON.parse(rawData);
                      if (data.safe === false || (data.flags && data.flags.length > 0) || (data.scores && ((data.scores.nsfw > threshold) || (data.scores.sexy > threshold) || (data.scores.hentai > threshold) || (data.scores.porn > threshold) || (data.scores.drawings > threshold)))) { isUnsafe = true; detectedFlag = getTopFlag(data.scores); }
                  }
              } catch (err) { console.error("Scanner Error:", err); }
