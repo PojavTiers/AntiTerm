@@ -32,47 +32,37 @@ function parseApiScores(data) {
     return scores;
 }
 
-// UPDATED: Handles Klipy page URLs, WebP, and direct links
-async function resolveMediaUrl(url) {
-    // If it's a direct image/video link, return it immediately
+// This function now expects Discord's embed data to already be passed in
+async function resolveMediaUrl(url, embed) {
+    // 1. If it's a direct media link, return it immediately
     if (url.match(/\.(jpeg|jpg|png|gif|mp4|webm|webp)/i)) return url; 
-    
-    try {
-        console.log(`[SCANNER] Resolving webpage link: ${url}`);
-        const res = await fetch(url, {
-            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
-        });
-        
-        if (!res.ok) {
-            console.log(`[SCANNER] Page returned status ${res.status}. Trying to find direct link anyway...`);
-        }
-        
-        const html = await res.text();
-        
-        // Look for Klipy/Tenor MP4 or WebM (best for Discord)
-        const mp4Match = html.match(/(https:\/\/[^"']+\.(?:mp4|webm))/i);
-        if (mp4Match) {
-            console.log(`[SCANNER] Found direct video: ${mp4Match[0]}`);
-            return mp4Match[0];
-        }
 
-        // Look for GIF
-        const gifMatch = html.match(/(https:\/\/[^"']+\.gif)/i);
-        if (gifMatch) {
-            console.log(`[SCANNER] Found direct GIF: ${gifMatch[0]}`);
-            return gifMatch[0];
-        }
-
-        // Look for WebP (Klipy's static link format)
-        const webpMatch = html.match(/(https:\/\/[^"']+\.webp)/i);
-        if (webpMatch) {
-            console.log(`[SCANNER] Found direct WebP: ${webpMatch[0]}`);
-            return webpMatch[0];
-        }
-        
-    } catch (e) {
-        console.error("[SCANNER] Failed to resolve link:", e.message);
+    // 2. Check if Discord's embed already has the direct video URL (Klipy/Tenor)
+    if (embed && embed.video && embed.video.url) {
+        console.log(`[SCANNER] Using Discord embed video URL: ${embed.video.url}`);
+        return embed.video.url;
     }
+    if (embed && embed.image && embed.image.url) {
+        console.log(`[SCANNER] Using Discord embed image URL: ${embed.image.url}`);
+        return embed.image.url;
+    }
+    if (embed && embed.thumbnail && embed.thumbnail.url) {
+        console.log(`[SCANNER] Using Discord embed thumbnail URL: ${embed.thumbnail.url}`);
+        return embed.thumbnail.url;
+    }
+    
+    // 3. Fallback: For other sites, try scraping (might still work for some)
+    try {
+        console.log(`[SCANNER] Attempting to scrape: ${url}`);
+        const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' } });
+        if (!res.ok) return null;
+        const html = await res.text();
+        const mp4Match = html.match(/(https:\/\/[^"']+\.(?:mp4|webm))/i);
+        if (mp4Match) return mp4Match[0];
+        const gifMatch = html.match(/(https:\/\/[^"']+\.gif)/i);
+        if (gifMatch) return gifMatch[0];
+    } catch (e) {}
+    
     return null;
 }
 
@@ -112,7 +102,8 @@ async function generateCollage(videoBuffer, isGif = false) {
     }
 }
 
-async function scanMedia(url, s, client) {
+// UPDATED: Now accepts the message object to read embeds directly
+async function scanMedia(url, s, client, message = null) {
     let isUnsafe = false;
     let detectedFlag = "nsfw";
 
@@ -127,19 +118,22 @@ async function scanMedia(url, s, client) {
     if (!apiUrl.startsWith('http')) apiUrl = 'https://' + apiUrl;
 
     try {
-        const directUrl = await resolveMediaUrl(url);
+        // Find the matching embed for this URL (if any)
+        let matchingEmbed = null;
+        if (message && message.embeds.length > 0) {
+            matchingEmbed = message.embeds.find(e => e.url === url || (e.video && e.video.url === url) || (e.thumbnail && e.thumbnail.url === url));
+        }
+
+        const directUrl = await resolveMediaUrl(url, matchingEmbed);
         if (!directUrl) {
-            console.log(`[SCANNER DEBUG] Could not find a direct media link inside: ${url}`);
+            console.log(`[SCANNER DEBUG] Could not resolve media link: ${url}`);
             return { isUnsafe: false, detectedFlag: "nsfw" };
         }
 
         const isVideo = directUrl.toLowerCase().includes('.mp4') || directUrl.toLowerCase().includes('.webm');
         const isGif = directUrl.toLowerCase().includes('.gif');
-        const isWebp = directUrl.toLowerCase().includes('.webp');
 
-        const imageResponse = await fetch(directUrl, {
-            headers: { 'User-Agent': 'Mozilla/5.0' }
-        });
+        const imageResponse = await fetch(directUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
         const buffer = Buffer.from(await imageResponse.arrayBuffer());
 
         if (buffer.length === 0) return { isUnsafe: false, detectedFlag: "nsfw" };
@@ -164,9 +158,7 @@ async function scanMedia(url, s, client) {
         };
 
         if (isVideo || isGif) {
-            console.log(`[SCANNER] Generating collage for ${isGif ? 'GIF' : 'Video'}...`);
             const collage = await generateCollage(buffer, isGif);
-            
             if (!collage) return { isUnsafe: false, detectedFlag: "nsfw" };
 
             const scores = await sendToApi(new Blob([collage], { type: 'image/jpeg' }), 'collage.jpg');
@@ -179,8 +171,7 @@ async function scanMedia(url, s, client) {
                 }
             }
         } else {
-            // WebP and standard images go straight to the API
-            const scores = await sendToApi(new Blob([buffer], { type: isWebp ? 'image/webp' : 'image/jpeg' }), isWebp ? 'image.webp' : 'image.jpg');
+            const scores = await sendToApi(new Blob([buffer], { type: 'image/jpeg' }), 'image.jpg');
             if (scores) {
                 console.log(`[SCANNER DEBUG] Scores -> Porn: ${(scores.porn*100).toFixed(2)}% | Hentai: ${(scores.hentai*100).toFixed(2)}% | Sexy: ${(scores.sexy*100).toFixed(2)}% | Drawing: ${(scores.drawing*100).toFixed(2)}%`);
                 const isHighDrawing = scores.drawing > 0.50 && s.nsfwMode === 'advanced';
