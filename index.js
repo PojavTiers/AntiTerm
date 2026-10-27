@@ -26,7 +26,7 @@ const client = new Client({
   ],
 });
 
-// Parser specifically built for the Florian NSFW API array format
+// Parser for the NSFW API array format
 function parseApiScores(predictionArray) {
     const scores = { porn: 0, hentai: 0, sexy: 0, drawing: 0, neutral: 0 };
     if (Array.isArray(predictionArray)) {
@@ -53,7 +53,7 @@ function getTopFlag(scores) {
             highest = flag;
         }
     }
-    if (highest === 'drawing') return 'hentai'; // We map drawings to hentai for the warning message
+    if (highest === 'drawing') return 'hentai'; 
     return highest;
 }
 
@@ -65,7 +65,7 @@ function censorWord(word) {
     return word;
 }
 
-// Improved video collage: Grabs 6 evenly spaced frames to ensure we don't miss short NSFW clips
+// PERFECT VIDEO COLLAGE: 9 evenly spaced frames in a 3x3 grid
 async function createVideoCollage(videoBuffer, isGif = false) {
     const tempVideoPath = path.join(os.tmpdir(), `vid_${Date.now()}.${isGif ? 'gif' : 'mp4'}`);
     const outputPath = path.join(os.tmpdir(), `collage_${Date.now()}.jpg`);
@@ -77,9 +77,10 @@ async function createVideoCollage(videoBuffer, isGif = false) {
                 .on('end', resolve)
                 .on('error', reject)
                 .outputOptions([
-                    '-vf', 'fps=1/2,scale=320:240,tile=2x3', // 1 frame every 2 seconds, tiled 2x3
+                    // Grab 9 frames evenly, scale to 256x256, tile 3x3
+                    '-vf', 'select=\'not(mod(n\\,15))\',scale=256:256,tile=3x3', 
                     '-frames:v', '1', 
-                    '-q:v', '5'
+                    '-q:v', '4' // High quality JPEG
                 ])
                 .save(outputPath);
         });
@@ -398,10 +399,6 @@ client.on('messageCreate', async (message) => {
 
       // AI SCANNER
       if (s.antiNsfw) {
-         // Aggressive Thresholds for 99% detection:
-         // Advanced: 0.05 (5% chance)
-         // Moderate: 0.25 (25% chance)
-         // Basic: 0.50 (50% chance)
          let threshold = 0.50;
          if (s.nsfwMode === 'advanced') threshold = 0.05;
          else if (s.nsfwMode === 'moderate') threshold = 0.25;
@@ -460,15 +457,10 @@ client.on('messageCreate', async (message) => {
                      const apiRes = await fetch(apiUrl + '/classify', { 
                          method: 'POST', 
                          body: formData,
-                         headers: {
-                             'Authorization': `Bearer ${apiKey}`
-                         }
+                         headers: { 'Authorization': `Bearer ${apiKey}` }
                      });
                      
-                     if (!apiRes.ok) {
-                         console.error(`[SCANNER] API Error: ${apiRes.status} ${apiRes.statusText}`);
-                         return;
-                     }
+                     if (!apiRes.ok) return;
 
                      const rawData = await apiRes.text();
                      
@@ -477,16 +469,18 @@ client.on('messageCreate', async (message) => {
                          const scores = parseApiScores(data.prediction);
                          
                          console.log(`[SCANNER DEBUG] Threshold: ${threshold}`);
-                         console.log(`[SCANNER DEBUG] Parsed Scores:`, scores);
+                         console.log(`[SCANNER DEBUG] Porn: ${(scores.porn*100).toFixed(2)}% | Hentai: ${(scores.hentai*100).toFixed(2)}% | Sexy: ${(scores.sexy*100).toFixed(2)}% | Drawing: ${(scores.drawing*100).toFixed(2)}%`);
                          
+                         const isHighDrawing = scores.drawing > 0.50 && s.nsfwMode === 'advanced';
+
                          if (scores && (
                              (scores.porn > threshold) ||
                              (scores.hentai > threshold) || 
                              (scores.sexy > threshold) || 
-                             (scores.drawing > threshold)
+                             isHighDrawing 
                          )) { 
                              isUnsafe = true; 
-                             detectedFlag = getTopFlag(scores); 
+                             detectedFlag = isHighDrawing ? 'hentai' : getTopFlag(scores); 
                              console.log(`[SCANNER DEBUG] FLAGGED AS NSFW! Flag: ${detectedFlag}`);
                          } else {
                              console.log(`[SCANNER DEBUG] Passed. Image deemed SAFE.`);
@@ -499,11 +493,9 @@ client.on('messageCreate', async (message) => {
                  if (isVideo || isGif) {
                      const collageBuffer = await createVideoCollage(buffer, isGif);
                      if (collageBuffer) {
-                         console.log(`[SCANNER] Sending COLLAGE to ${apiUrl}/classify`);
                          await scanImage(new Blob([collageBuffer], { type: 'image/jpeg' }));
                      }
                  } else {
-                     console.log(`[SCANNER] Sending IMAGE to ${apiUrl}/classify`);
                      await scanImage(new Blob([imageBuffer], { type: contentType || 'image/jpeg' }));
                  }
              } catch (err) { console.error("Scanner Error:", err); }
