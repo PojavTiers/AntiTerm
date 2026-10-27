@@ -4,8 +4,8 @@ const settingsSchema = new mongoose.Schema({
     guildId: { type: String, required: true, unique: true },
     antiNsfw: { type: Boolean, default: false },
     nsfwMode: { type: String, default: 'moderate' },
-    nsfwCustomThreshold: { type: Number, default: 0.5 }, // NEW
-    nsfwShowMsg: { type: Boolean, default: true },      // NEW
+    nsfwCustomThreshold: { type: Number, default: 0.5 },
+    nsfwShowMsg: { type: Boolean, default: true },
     nsfwPunish: { type: String, default: 'delete' },
     nsfwDur: { type: String, default: '1h' },
     words: { type: [String], default: [] },
@@ -38,7 +38,6 @@ async function getWhitelist() {
     }
     
     let updated = false;
-
     const MAIN_SERVER_ID = '1500445119185293404'; 
     if (!config.allowedGuilds.includes(MAIN_SERVER_ID)) {
         config.allowedGuilds.push(MAIN_SERVER_ID);
@@ -51,24 +50,17 @@ async function getWhitelist() {
             if (guildId && guildId.length > 10 && !config.allowedGuilds.includes(guildId)) {
                 config.allowedGuilds.push(guildId);
                 updated = true;
-                console.log(`[DEBUG] Added guild to whitelist: ${guildId}`);
             }
         }
     }
 
-    if (updated) {
-        await config.save();
-    }
-    
+    if (updated) await config.save();
     return config;
 }
 
 async function connectDB() {
     const mongoUri = process.env.MONGO_URL;
-    if (!mongoUri) {
-        console.log(`[DEBUG] No MONGO_URL found. Settings will not be saved permanently.`);
-        return;
-    }
+    if (!mongoUri) return;
     try {
         await mongoose.connect(mongoUri);
         console.log(`[DEBUG] Connected to MongoDB successfully!`);
