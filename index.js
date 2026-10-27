@@ -33,11 +33,16 @@ function censorWord(word) {
 }
 
 async function generateConfigMenu(client, s, guild) {
-    // Fetch your custom emojis safely
+    // Fetch your custom emojis
     const settingsEmoji = await embeds.getEmoji(client, 'settings', '⚙️');
     const onlineEmoji = await embeds.getEmoji(client, 'online_t', '🟢');
     const offlineEmoji = await embeds.getEmoji(client, 'offline_t', '🔴');
     const shieldEmoji = await embeds.getEmoji(client, 'shield', '🛡️');
+    
+    // Fetch the new custom config emojis
+    const config1 = await embeds.getEmoji(client, 'config_1', '⚙️');
+    const config2 = await embeds.getEmoji(client, 'config_2', '🛡️');
+    const config3 = await embeds.getEmoji(client, 'config_3', '⚙️');
     
     // Status formatting
     const status = s.antiNsfw ? `${onlineEmoji} **Enabled**` : `${offlineEmoji} **Disabled**`;
@@ -69,19 +74,19 @@ Pick a category below to configure your security settings.
                 label: 'Scanner Settings', 
                 description: 'Toggle scanner, mode, and punishment', 
                 value: 'action_scanner_menu', 
-                emoji: settingsEmoji 
+                emoji: config1 // Using config_1
             },
             { 
                 label: 'Text Filter', 
                 description: 'Manage blocked words', 
                 value: 'action_filter_menu', 
-                emoji: shieldEmoji 
+                emoji: config2 // Using config_2
             },
             { 
                 label: 'Whitelist', 
                 description: 'Manage authorized users', 
                 value: 'action_whitelist_menu', 
-                emoji: settingsEmoji 
+                emoji: config3 // Using config_3
             }
         ]);
 
