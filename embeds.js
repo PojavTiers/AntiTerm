@@ -23,7 +23,7 @@ async function getButtonEmoji(client, name, fallback) {
 }
 
 async function createEmbed(type, title, description, client, category = 'General', page = null, totalPages = null) {
-    let color = '#5865F2'; 
+    let color = '#2B2D31'; // Default dark theme color
     let icon = ''; 
 
     if (type === 'success') { color = '#57F287'; icon = await getEmoji(client, 'success', '✅'); }
@@ -37,6 +37,7 @@ async function createEmbed(type, title, description, client, category = 'General
         footerText = `AntiTerm Security | Page ${page} / ${totalPages} | ${category}`;
     }
 
+    // If the emoji exists, put it in front. If not, just the description.
     const formattedDesc = icon ? `${icon} ${description}` : description;
 
     const embed = new EmbedBuilder()
