@@ -8,7 +8,7 @@ const setActivity = require('./activity.js');
 const { connectDB, getSettings, getWhitelist } = require('./database.js');
 const { sendMessage, isAuthorized, checkViolation, applyPunishment } = require('./utils.js');
 const { getHelpContainer } = require('./help.js');
-const { scanMedia } = require('./nsfw.js');
+const { scanMedia } = require('./nsfw.js'); // IMPORT THE NEW FILE
 
 ffmpeg.setFfmpegPath(ffmpegPath);
 ffmpeg.setFfprobePath(ffprobePath);
@@ -339,34 +339,27 @@ client.on('messageCreate', async (message) => {
       if (s.antiNsfw) {
          let mediaUrls = []; 
 
-         // 1. Grab from Embeds (Discord's preview of Klipy links)
          if (message.embeds.length > 0) {
-             for (const embed of message.embeds) {
+             const embed = message.embeds[0];
+             if (embed.thumbnail && embed.thumbnail.url) mediaUrls.push(embed.thumbnail.url);
+             if (embed.image && embed.image.url) mediaUrls.push(embed.image.url);
+             if (embed.video && embed.video.url) mediaUrls.push(embed.video.url);
+         }
+         if (message.messageSnapshots.size > 0) {
+             const snapshot = message.messageSnapshots.first();
+             if (snapshot.attachments.size > 0) mediaUrls.push(snapshot.attachments.first().url);
+             if (snapshot.embeds.length > 0) {
+                 const embed = snapshot.embeds[0];
                  if (embed.thumbnail && embed.thumbnail.url) mediaUrls.push(embed.thumbnail.url);
                  if (embed.image && embed.image.url) mediaUrls.push(embed.image.url);
                  if (embed.video && embed.video.url) mediaUrls.push(embed.video.url);
-                 if (embed.url) mediaUrls.push(embed.url);
              }
          }
-         
-         // 2. Grab from message content (raw links)
-         const urlRegex = /(https?:\/\/[^\s]+)/g;
-         const foundUrls = message.content.match(urlRegex);
-         if (foundUrls) {
-             mediaUrls.push(...foundUrls);
-         }
-
-         // 3. Grab from attachments
-         if (message.attachments.size > 0) {
-             message.attachments.forEach(att => mediaUrls.push(att.url));
-         }
-
-         // Remove duplicates
-         mediaUrls = [...new Set(mediaUrls)];
+         if (message.attachments.size > 0) mediaUrls.push(message.attachments.first().url);
+         if (message.content.match(/https?:\/\/[^\s]+/)) mediaUrls.push(message.content.match(/https?:\/\/[^\s]+/)[0]);
 
          for (let mediaUrl of mediaUrls) {
-             // Pass the message object so nsfw.js can read Discord's embeds
-             const result = await scanMedia(mediaUrl, s, client, message);
+             const result = await scanMedia(mediaUrl, s, client);
              
              if (result.isUnsafe) {
                  await message.delete().catch(() => {});
@@ -376,7 +369,7 @@ client.on('messageCreate', async (message) => {
                  const embed = await embeds.warning('NSFW Detected', desc, message.guild, client);
                  const warningMsg = await message.channel.send({ embeds: [embed] }).catch(e => console.error("Failed to send warning:", e));
                  if (warningMsg) setTimeout(() => warningMsg.delete().catch(() => {}), 5000);
-                 break;
+                 break; 
              }
          }
       }
