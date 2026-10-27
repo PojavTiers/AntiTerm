@@ -3,12 +3,10 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-// 1. Bulletproof Parser
 function parseApiScores(data) {
     const scores = { porn: 0, hentai: 0, sexy: 0, drawing: 0, neutral: 0 };
     let array = null;
     
-    // Find the array no matter how it's nested
     if (Array.isArray(data)) array = data;
     else if (data && Array.isArray(data.prediction)) array = data.prediction;
     else if (data && Array.isArray(data.predictions)) array = data.predictions;
@@ -18,7 +16,6 @@ function parseApiScores(data) {
         for (const item of array) {
             const className = (item.className || item.label || item.class || '').toLowerCase();
             const prob = parseFloat(item.probability || item.score || item.confidence || 0);
-            
             if (className === 'porn') scores.porn = prob;
             if (className === 'hentai') scores.hentai = prob;
             if (className === 'sexy') scores.sexy = prob;
@@ -26,7 +23,6 @@ function parseApiScores(data) {
             if (className === 'neutral') scores.neutral = prob;
         }
     } else if (data && typeof data === 'object') {
-        // Flat object fallback
         for (const key of Object.keys(data)) {
             const k = key.toLowerCase();
             const val = parseFloat(data[key]);
@@ -36,17 +32,15 @@ function parseApiScores(data) {
     return scores;
 }
 
-// 2. Advanced Collage Generator (Generates 2 collages for longer videos)
 async function generateCollages(videoBuffer, isGif = false) {
     const tempVideoPath = path.join(os.tmpdir(), `vid_${Date.now()}.${isGif ? 'gif' : 'mp4'}`);
     const collage1Path = path.join(os.tmpdir(), `collage1_${Date.now()}.jpg`);
-    const collage2Path = path.join(os.tmpdir(), `collage2_${Date.now()}.jpg`);
     fs.writeFileSync(tempVideoPath, videoBuffer);
 
     const collages = [];
 
     try {
-        // First collage: 9 frames (3x3 grid)
+        // 3x3 grid of 9 frames
         await new Promise((resolve, reject) => {
             ffmpeg(tempVideoPath)
                 .on('end', resolve)
@@ -54,17 +48,10 @@ async function generateCollages(videoBuffer, isGif = false) {
                 .outputOptions(['-vf', 'select=\'not(mod(n\\,10))\',scale=256:256,tile=3x3', '-frames:v', '1', '-q:v', '4'])
                 .save(collage1Path);
         });
-        if (fs.existsSync(collage1Path)) collages.push(fs.readFileSync(collage1Path));
-
-        // Second collage: skip 15 seconds ahead and grab another 9 frames (if video is long enough)
-        await new Promise((resolve, reject) => {
-            ffmpeg(tempVideoPath)
-                .on('end', resolve)
-                .on('error', reject)
-                .outputOptions(['-ss', '15', '-vf', 'select=\'not(mod(n\\,10))\',scale=256:256,tile=3x3', '-frames:v', '1', '-q:v', '4'])
-                .save(collage2Path);
-        });
-        if (fs.existsSync(collage2Path)) collages.push(fs.readFileSync(collage2Path));
+        if (fs.existsSync(collage1Path)) {
+            const buf = fs.readFileSync(collage1Path);
+            if (buf.length > 0) collages.push(buf);
+        }
 
         return collages;
     } catch (err) {
@@ -73,11 +60,9 @@ async function generateCollages(videoBuffer, isGif = false) {
     } finally {
         if (fs.existsSync(tempVideoPath)) fs.unlinkSync(tempVideoPath);
         if (fs.existsSync(collage1Path)) fs.unlinkSync(collage1Path);
-        if (fs.existsSync(collage2Path)) fs.unlinkSync(collage2Path);
     }
 }
 
-// 3. Main Scanner Function
 async function scanMedia(url, s, client) {
     let isUnsafe = false;
     let detectedFlag = "nsfw";
@@ -100,21 +85,31 @@ async function scanMedia(url, s, client) {
 
     try {
         const imageResponse = await fetch(url);
-        const contentType = imageResponse.headers.get('content-type');
         const buffer = Buffer.from(await imageResponse.arrayBuffer());
 
-        const sendToApi = async (blob) => {
+        if (buffer.length === 0) {
+            console.error("[SCANNER CRITICAL] Downloaded file is empty (0 bytes).");
+            return { isUnsafe: false, detectedFlag: "nsfw" };
+        }
+
+        const sendToApi = async (blob, filename) => {
             const formData = new FormData(); 
-            formData.append('image', blob, 'image.jpg');
+            // Force the type to be image/jpeg
+            formData.append('image', blob, filename);
             
             const apiRes = await fetch(apiUrl + '/classify', { 
                 method: 'POST', 
                 body: formData,
-                headers: { 'Authorization': `Bearer ${apiKey}` }
+                headers: { 
+                    'Authorization': `Bearer ${apiKey}`
+                    // Note: We intentionally DO NOT set Content-Type here. 
+                    // The native fetch/FormData will automatically set the correct boundary.
+                }
             });
 
             if (!apiRes.ok) {
-                console.error(`[SCANNER CRITICAL] API rejected request: ${apiRes.status}`);
+                const errText = await apiRes.text();
+                console.error(`[SCANNER CRITICAL] API rejected request: ${apiRes.status} | Body: ${errText}`);
                 return null;
             }
 
@@ -130,23 +125,27 @@ async function scanMedia(url, s, client) {
 
         if (isVideo || isGif) {
             const collages = await generateCollages(buffer, isGif);
-            for (const collage of collages) {
-                const scores = await sendToApi(new Blob([collage], { type: 'image/jpeg' }));
+            if (collages.length === 0) {
+                console.log("[SCANNER DEBUG] No collages were generated. The GIF might be too short or corrupted.");
+            }
+
+            for (let i = 0; i < collages.length; i++) {
+                const scores = await sendToApi(new Blob([collages[i]], { type: 'image/jpeg' }), `collage_${i}.jpg`);
                 if (!scores) continue;
 
-                console.log(`[SCANNER DEBUG] Collage Scores -> Porn: ${(scores.porn*100).toFixed(2)}% | Hentai: ${(scores.hentai*100).toFixed(2)}% | Sexy: ${(scores.sexy*100).toFixed(2)}%`);
+                console.log(`[SCANNER DEBUG] Collage ${i+1} Scores -> Porn: ${(scores.porn*100).toFixed(2)}% | Hentai: ${(scores.hentai*100).toFixed(2)}% | Sexy: ${(scores.sexy*100).toFixed(2)}% | Drawing: ${(scores.drawing*100).toFixed(2)}%`);
                 
                 const isHighDrawing = scores.drawing > 0.50 && s.nsfwMode === 'advanced';
                 if (scores.porn > threshold || scores.hentai > threshold || scores.sexy > threshold || isHighDrawing) {
                     isUnsafe = true;
                     detectedFlag = isHighDrawing ? 'hentai' : (scores.hentai > scores.porn && scores.hentai > scores.sexy ? 'hentai' : 'nsfw');
-                    break; // Stop checking if one collage is NSFW
+                    break; 
                 }
             }
         } else {
-            const scores = await sendToApi(new Blob([buffer], { type: contentType || 'image/jpeg' }));
+            const scores = await sendToApi(new Blob([buffer], { type: 'image/jpeg' }), 'image.jpg');
             if (scores) {
-                console.log(`[SCANNER DEBUG] Image Scores -> Porn: ${(scores.porn*100).toFixed(2)}% | Hentai: ${(scores.hentai*100).toFixed(2)}% | Sexy: ${(scores.sexy*100).toFixed(2)}%`);
+                console.log(`[SCANNER DEBUG] Image Scores -> Porn: ${(scores.porn*100).toFixed(2)}% | Hentai: ${(scores.hentai*100).toFixed(2)}% | Sexy: ${(scores.sexy*100).toFixed(2)}% | Drawing: ${(scores.drawing*100).toFixed(2)}%`);
                 
                 const isHighDrawing = scores.drawing > 0.50 && s.nsfwMode === 'advanced';
                 if (scores.porn > threshold || scores.hentai > threshold || scores.sexy > threshold || isHighDrawing) {
