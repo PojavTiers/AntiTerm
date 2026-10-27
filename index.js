@@ -364,14 +364,12 @@ client.on('messageCreate', async (message) => {
           const helpMenu = await getHelpContainer(1, client, 2);
           const msg = await message.reply({ components: [helpMenu], flags: MessageFlags.IsComponentsV2 });
           
-          let currentPage = 1;
-          const collector = msg.createMessageComponentCollector({ componentType: ComponentType.Button, time: 60000 });
+          const collector = msg.createMessageComponentCollector({ componentType: ComponentType.StringSelect, time: 60000 });
           collector.on('collect', async i => {
               if (i.user.id !== message.author.id) return i.reply({ content: "Not your menu.", ephemeral: true });
-              if (i.customId === 'delete_msg') return msg.delete().catch(()=>{});
-              if (i.customId === 'prev_page' && currentPage > 1) currentPage--;
-              if (i.customId === 'next_page' && currentPage < 2) currentPage++;
-              const newMenu = await getHelpContainer(currentPage, client, 2);
+              
+              const page = i.values[0] === 'help_page_2' ? 2 : 1;
+              const newMenu = await getHelpContainer(page, client, 2);
               await i.update({ components: [newMenu], flags: MessageFlags.IsComponentsV2 });
           });
           return;
