@@ -8,7 +8,7 @@ const setActivity = require('./activity.js');
 const { connectDB, getSettings, getWhitelist } = require('./database.js');
 const { sendMessage, isAuthorized, checkViolation, applyPunishment } = require('./utils.js');
 const { getHelpContainer } = require('./help.js');
-const { scanMedia } = require('./nsfw.js'); // IMPORT THE NEW FILE
+const { scanMedia } = require('./nsfw.js');
 
 ffmpeg.setFfmpegPath(ffmpegPath);
 ffmpeg.setFfprobePath(ffprobePath);
@@ -33,50 +33,63 @@ function censorWord(word) {
 }
 
 async function generateConfigMenu(client, s, guild) {
+    // Fetch your custom emojis safely
     const settingsEmoji = await embeds.getEmoji(client, 'settings', '⚙️');
     const onlineEmoji = await embeds.getEmoji(client, 'online_t', '🟢');
     const offlineEmoji = await embeds.getEmoji(client, 'offline_t', '🔴');
-    const arrow = await embeds.getEmoji(client, 'arrow_long', '➜');
+    const shieldEmoji = await embeds.getEmoji(client, 'shield', '🛡️');
     
+    // Status formatting
     const status = s.antiNsfw ? `${onlineEmoji} **Enabled**` : `${offlineEmoji} **Disabled**`;
     const wordCount = s.words ? s.words.length : 0;
     const userCount = s.allowedUsers ? s.allowedUsers.length : 0;
     
+    // V2 Text Display matching your screenshot's clean layout
     const textDisplay = new TextDisplayBuilder().setContent(`
-### ${settingsEmoji} AntiTerm Dashboard
+${shieldEmoji} **AntiTerm Configuration**
 
-**NSFW Media Scanner**
-${arrow} **Status:** ${status}
-${arrow} **Mode:** \`${s.nsfwMode.toUpperCase()}\`
-${arrow} **Punishment:** \`${s.nsfwPunish.toUpperCase()}\`
+**NSFW Scanner**
+Status: ${status}
+Mode: \`${s.nsfwMode.toUpperCase()}\`
+Punishment: \`${s.nsfwPunish.toUpperCase()}\`
 
 **Text Filter**
-${arrow} **Filtered Words:** \`${wordCount}\`
-${arrow} **Whitelisted Users:** \`${userCount}\`
+Blocked Words: \`${wordCount}\`
+Whitelisted Users: \`${userCount}\`
 
-*Select an option from the menu below to configure.*
+Pick a category below to configure your security settings.
     `);
 
+    // We use a StringSelectMenu as the "Button" from your screenshot
     const selectMenu = new StringSelectMenuBuilder()
         .setCustomId('config_menu')
-        .setPlaceholder('Select a setting to configure...')
+        .setPlaceholder('Choose a category')
         .addOptions([
-            { label: 'Toggle Scanner', description: 'Turn the NSFW media scanner on or off', value: 'action_toggle_nsfw' },
-            { label: 'Scanner Mode', description: 'Change the AI strictness', value: 'action_mode' },
-            { label: 'Punishment', description: 'Set what happens to rule breakers', value: 'action_punish' },
-            { label: 'Add Filter Words', description: 'Add words to the unbypassable filter', value: 'action_add_word' },
-            { label: 'Remove Filter Word', description: 'Remove a word from the text filter', value: 'action_remove_word' },
-            { label: 'View Filtered Words', description: 'See all currently blocked words', value: 'action_list_words' },
-            { label: 'Add Whitelisted User', description: 'Allow a user to configure the bot', value: 'action_add_user' },
-            { label: 'Remove Whitelisted User', description: 'Revoke a user\'s access to the bot', value: 'action_remove_user' },
-            { label: 'View Whitelisted Users', description: 'See who can configure the bot', value: 'action_list_users' },
+            { 
+                label: 'Scanner Settings', 
+                description: 'Toggle scanner, mode, and punishment', 
+                value: 'action_scanner_menu', 
+                emoji: settingsEmoji 
+            },
+            { 
+                label: 'Text Filter', 
+                description: 'Manage blocked words', 
+                value: 'action_filter_menu', 
+                emoji: shieldEmoji 
+            },
+            { 
+                label: 'Whitelist', 
+                description: 'Manage authorized users', 
+                value: 'action_whitelist_menu', 
+                emoji: settingsEmoji 
+            }
         ]);
 
     const row = new ActionRowBuilder().addComponents(selectMenu);
 
+    // We wrap it in a container to mimic that dark box look in the screenshot
     return new ContainerBuilder()
         .addTextDisplayComponents(textDisplay)
-        .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(1))
         .addActionRowComponents(row);
 }
 
@@ -114,7 +127,51 @@ client.on('interactionCreate', async (interaction) => {
   try {
       const s = await getSettings(interaction.guild.id);
 
+      // --- 1. MAIN CONFIG MENU (Category Selection) ---
       if (interaction.isStringSelectMenu() && interaction.customId === 'config_menu') {
+          if (!isAuthorized(interaction.member, s)) return interaction.reply({ content: '❌ No permission.', ephemeral: true });
+          
+          const action = interaction.values[0];
+
+          if (action === 'action_scanner_menu') {
+              const menu = new StringSelectMenuBuilder()
+                  .setCustomId('scanner_submenu')
+                  .setPlaceholder('Select scanner action...')
+                  .addOptions([
+                      { label: 'Toggle Scanner', description: 'Turn the NSFW media scanner on or off', value: 'action_toggle_nsfw' },
+                      { label: 'Scanner Mode', description: 'Change the AI strictness', value: 'action_mode' },
+                      { label: 'Punishment', description: 'Set what happens to rule breakers', value: 'action_punish' }
+                  ]);
+              return interaction.reply({ components: [new ActionRowBuilder().addComponents(menu)], ephemeral: true });
+          }
+
+          if (action === 'action_filter_menu') {
+              const menu = new StringSelectMenuBuilder()
+                  .setCustomId('filter_submenu')
+                  .setPlaceholder('Select filter action...')
+                  .addOptions([
+                      { label: 'Add Filter Words', description: 'Add words to the unbypassable filter', value: 'action_add_word' },
+                      { label: 'Remove Filter Word', description: 'Remove a word from the text filter', value: 'action_remove_word' },
+                      { label: 'View Filtered Words', description: 'See all currently blocked words', value: 'action_list_words' }
+                  ]);
+              return interaction.reply({ components: [new ActionRowBuilder().addComponents(menu)], ephemeral: true });
+          }
+
+          if (action === 'action_whitelist_menu') {
+              const menu = new StringSelectMenuBuilder()
+                  .setCustomId('whitelist_submenu')
+                  .setPlaceholder('Select whitelist action...')
+                  .addOptions([
+                      { label: 'Add Whitelisted User', description: 'Allow a user to configure the bot', value: 'action_add_user' },
+                      { label: 'Remove Whitelisted User', description: 'Revoke a user\'s access to the bot', value: 'action_remove_user' },
+                      { label: 'View Whitelisted Users', description: 'See who can configure the bot', value: 'action_list_users' }
+                  ]);
+              return interaction.reply({ components: [new ActionRowBuilder().addComponents(menu)], ephemeral: true });
+          }
+      }
+
+      // --- 2. SUBMENUS & ACTIONS ---
+      if (interaction.isStringSelectMenu() && ['scanner_submenu', 'filter_submenu', 'whitelist_submenu'].includes(interaction.customId)) {
           if (!isAuthorized(interaction.member, s)) return interaction.reply({ content: '❌ No permission.', ephemeral: true });
           
           const action = interaction.values[0];
@@ -188,6 +245,7 @@ client.on('interactionCreate', async (interaction) => {
           }
       }
 
+      // --- 3. SECONDARY SELECTS (Mode / Punish) ---
       if (interaction.isStringSelectMenu() && (interaction.customId === 'select_mode' || interaction.customId === 'select_punish')) {
           if (!isAuthorized(interaction.member, s)) return;
           await interaction.deferUpdate();
@@ -209,6 +267,7 @@ client.on('interactionCreate', async (interaction) => {
           }
       }
 
+      // --- 4. MODAL SUBMISSIONS ---
       if (interaction.isModalSubmit()) {
           if (!isAuthorized(interaction.member, s)) return;
           await interaction.deferReply({ ephemeral: true });
@@ -266,6 +325,7 @@ client.on('interactionCreate', async (interaction) => {
           }
       }
 
+      // --- 5. SLASH COMMANDS ---
       if (interaction.isChatInputCommand()) {
           if (interaction.commandName === 'config') {
               await interaction.deferReply();
