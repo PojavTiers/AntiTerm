@@ -1,4 +1,4 @@
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ContainerBuilder, TextDisplayBuilder, SeparatorBuilder } = require('discord.js');
+const { ActionRowBuilder, StringSelectMenuBuilder, ContainerBuilder, TextDisplayBuilder } = require('discord.js');
 const embeds = require('./embeds.js');
 
 async function getHelpContainer(page, client, totalPages) {
@@ -6,9 +6,9 @@ async function getHelpContainer(page, client, totalPages) {
     const shieldDisplay = await embeds.getEmoji(client, 'shield', '🛡️');
     
     const p1 = `
-### ${infoDisplay} AntiTerm Help
+${infoDisplay} **AntiTerm Help Center**
 
-**${shieldDisplay} Interactive Dashboard**
+${shieldDisplay} **Interactive Dashboard**
 All features are handled inside the **Config Menu**. 
 Type \`$config\` or \`/config\` to open it.
 
@@ -19,8 +19,9 @@ Type \`$config\` or \`/config\` to open it.
 \`>\` **Add/Remove Word:** Manage the unbypassable text filter.
 \`>\` **Add/Remove User:** Whitelist users to use the bot.
 `;
+
     const p2 = `
-### ${infoDisplay} Mode Guide
+${infoDisplay} **Mode Guide**
 
 **AI Scanner Modes:**
 \`>\` \`Basic\` - Scans only for hardcore porn.
@@ -33,19 +34,18 @@ The text filter is mathematically unbypassable. It detects homoglyphs (fake lett
 
     const currentDesc = page === 1 ? p1 : p2;
 
-    const leftEmoji = await embeds.getButtonEmoji(client, 'arrow_left', '◀');
-    const rightEmoji = await embeds.getButtonEmoji(client, 'arrow_right', '▶');
-    const trashEmoji = await embeds.getButtonEmoji(client, 'dustbin', '✖'); 
+    const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId('help_menu')
+        .setPlaceholder('Choose a page...')
+        .addOptions([
+            { label: 'Dashboard Info', description: 'How to use the config menu', value: 'help_page_1', default: page === 1 },
+            { label: 'Mode Guide', description: 'Explaining the AI strictness', value: 'help_page_2', default: page === 2 }
+        ]);
 
-    const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId('prev_page').setEmoji(leftEmoji).setStyle(ButtonStyle.Secondary).setDisabled(page === 1),
-        new ButtonBuilder().setCustomId('next_page').setEmoji(rightEmoji).setStyle(ButtonStyle.Secondary).setDisabled(page === totalPages),
-        new ButtonBuilder().setCustomId('delete_msg').setEmoji(trashEmoji).setStyle(ButtonStyle.Danger)
-    );
+    const row = new ActionRowBuilder().addComponents(selectMenu);
 
     return new ContainerBuilder()
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(currentDesc))
-        .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(1))
         .addActionRowComponents(row);
 }
 
