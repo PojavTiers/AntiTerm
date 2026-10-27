@@ -26,16 +26,36 @@ const client = new Client({
   ],
 });
 
-function parseApiScores(predictionArray) {
+// BULLETPROOF PARSER: Handles arrays, nested objects, and different capitalization
+function parseApiScores(data) {
     const scores = { porn: 0, hentai: 0, sexy: 0, drawing: 0, neutral: 0 };
-    if (Array.isArray(predictionArray)) {
-        for (const item of predictionArray) {
-            const className = (item.className || '').toLowerCase();
-            if (className === 'porn') scores.porn = item.probability;
-            if (className === 'hentai') scores.hentai = item.probability;
-            if (className === 'sexy') scores.sexy = item.probability;
-            if (className === 'drawing') scores.drawing = item.probability;
-            if (className === 'neutral') scores.neutral = item.probability;
+    
+    // Find the array no matter where it is
+    let array = null;
+    if (Array.isArray(data)) array = data;
+    else if (data && Array.isArray(data.prediction)) array = data.prediction;
+    else if (data && Array.isArray(data.predictions)) array = data.predictions;
+    else if (data && Array.isArray(data.data)) array = data.data;
+
+    if (array) {
+        for (const item of array) {
+            const className = (item.className || item.label || item.class || '').toLowerCase();
+            const prob = parseFloat(item.probability || item.score || item.confidence || 0);
+            
+            if (className === 'porn') scores.porn = prob;
+            if (className === 'hentai') scores.hentai = prob;
+            if (className === 'sexy') scores.sexy = prob;
+            if (className === 'drawing') scores.drawing = prob;
+            if (className === 'neutral') scores.neutral = prob;
+        }
+    } else if (data && typeof data === 'object') {
+        // Fallback if the API returns a flat object like { hentai: 0.99 }
+        for (const key of Object.keys(data)) {
+            const k = key.toLowerCase();
+            const val = parseFloat(data[key]);
+            if (!isNaN(val) && scores[k] !== undefined) {
+                scores[k] = val;
+            }
         }
     }
     return scores;
@@ -142,10 +162,6 @@ ${arrow} **Whitelisted Users:** \`${userCount}\`
 client.once('clientReady', async () => {
   console.log(`✅ ${client.user.tag} is online!`);
   setActivity(client);
-  
-  // DEBUG: Check if variables loaded
-  console.log(`[STARTUP] NSFW_API_URL loaded: ${process.env.NSFW_API_URL ? 'YES' : 'NO'}`);
-  console.log(`[STARTUP] API_KEY loaded: ${process.env.API_KEY ? 'YES' : 'NO'}`);
   
   try { 
       await client.application.commands.set([
@@ -446,17 +462,9 @@ client.on('messageCreate', async (message) => {
                  const buffer = Buffer.from(imageBuffer);
                  
                  let apiUrl = process.env.NSFW_API_URL;
-                 // FIXED: Looks for API_KEY
                  let apiKey = process.env.API_KEY; 
                  
-                 if (!apiUrl) {
-                     console.error("[SCANNER CRITICAL] NSFW_API_URL is missing in Railway Variables!");
-                     return;
-                 }
-                 if (!apiKey) {
-                     console.error("[SCANNER CRITICAL] API_KEY is missing in Railway Variables!");
-                     return;
-                 }
+                 if (!apiUrl || !apiKey) return;
 
                  if (!apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
                      apiUrl = 'https://' + apiUrl;
@@ -466,29 +474,28 @@ client.on('messageCreate', async (message) => {
                      const formData = new FormData(); 
                      formData.append('image', imageBlob, 'image.jpg');
                      
-                     console.log(`[SCANNER] Sending request to: ${apiUrl}/classify`);
-                     
                      const apiRes = await fetch(apiUrl + '/classify', { 
                          method: 'POST', 
                          body: formData,
                          headers: { 'Authorization': `Bearer ${apiKey}` }
                      });
                      
-                     console.log(`[SCANNER] HTTP Status: ${apiRes.status} ${apiRes.statusText}`);
-
                      const rawData = await apiRes.text();
                      
                      if (!apiRes.ok) {
-                         console.error(`[SCANNER CRITICAL] API rejected request. Raw Body:`, rawData);
+                         console.error(`[SCANNER CRITICAL] API rejected request:`, rawData);
                          return;
                      }
 
                      try {
-                         const data = JSON.parse(rawData);
-                         const scores = parseApiScores(data.prediction);
+                         const parsedData = JSON.parse(rawData);
                          
-                         console.log(`[SCANNER DEBUG] Threshold: ${threshold}`);
-                         console.log(`[SCANNER DEBUG] Porn: ${(scores.porn*100).toFixed(2)}% | Hentai: ${(scores.hentai*100).toFixed(2)}% | Sexy: ${(scores.sexy*100).toFixed(2)}% | Drawing: ${(scores.drawing*100).toFixed(2)}%`);
+                         // LOG THE RAW JSON TO SEE EXACTLY WHAT IT LOOKS LIKE
+                         console.log("[SCANNER RAW API RESPONSE]:", rawData);
+
+                         const scores = parseApiScores(parsedData);
+                         
+                         console.log(`[SCANNER DEBUG] Parsed Scores -> Porn: ${(scores.porn*100).toFixed(2)}% | Hentai: ${(scores.hentai*100).toFixed(2)}% | Sexy: ${(scores.sexy*100).toFixed(2)}% | Drawing: ${(scores.drawing*100).toFixed(2)}%`);
                          
                          const isHighDrawing = scores.drawing > 0.50 && s.nsfwMode === 'advanced';
 
@@ -512,11 +519,9 @@ client.on('messageCreate', async (message) => {
                  if (isVideo || isGif) {
                      const collageBuffer = await createVideoCollage(buffer, isGif);
                      if (collageBuffer) {
-                         console.log(`[SCANNER] Sending COLLAGE...`);
                          await scanImage(new Blob([collageBuffer], { type: 'image/jpeg' }));
                      }
                  } else {
-                     console.log(`[SCANNER] Sending IMAGE...`);
                      await scanImage(new Blob([imageBuffer], { type: contentType || 'image/jpeg' }));
                  }
              } catch (err) { console.error("[SCANNER ERROR] Catch block:", err); }
