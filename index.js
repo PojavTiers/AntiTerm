@@ -8,7 +8,7 @@ const setActivity = require('./activity.js');
 const { connectDB, getSettings, getWhitelist } = require('./database.js');
 const { sendMessage, isAuthorized, checkViolation, applyPunishment } = require('./utils.js');
 const { getHelpContainer } = require('./help.js');
-const { scanMedia } = require('./nsfw.js'); // IMPORT THE NEW FILE
+const { scanMedia } = require('./nsfw.js'); // IMPORT THE SCANNER
 
 ffmpeg.setFfmpegPath(ffmpegPath);
 ffmpeg.setFfprobePath(ffprobePath);
@@ -32,7 +32,6 @@ function censorWord(word) {
     return word;
 }
 
-// ... [PASTE YOUR generateConfigMenu function HERE from the previous code] ...
 async function generateConfigMenu(client, s, guild) {
     const settingsEmoji = await embeds.getEmoji(client, 'settings', '⚙️');
     const onlineEmoji = await embeds.getEmoji(client, 'online_t', '🟢');
@@ -336,7 +335,7 @@ client.on('messageCreate', async (message) => {
         }
       }
 
-      // AI SCANNER (Using the new nsfw.js file)
+      // AI SCANNER
       if (s.antiNsfw) {
          let mediaUrls = []; 
 
@@ -356,8 +355,20 @@ client.on('messageCreate', async (message) => {
                  if (embed.video && embed.video.url) mediaUrls.push(embed.video.url);
              }
          }
-         if (message.attachments.size > 0) mediaUrls.push(message.attachments.first().url);
-         if (message.content.match(/https?:\/\/[^\s]+/)) mediaUrls.push(message.content.match(/https?:\/\/[^\s]+/)[0]);
+         
+         if (message.attachments.size > 0) {
+             mediaUrls.push(message.attachments.first().url);
+         }
+         
+         // NEW: Extract all URLs from the message content (Tenor, Klipy, Giphy, etc.)
+         const urlRegex = /(https?:\/\/[^\s]+)/g;
+         const foundUrls = message.content.match(urlRegex);
+         if (foundUrls) {
+             mediaUrls.push(...foundUrls);
+         }
+
+         // Remove duplicates so we don't scan the same link twice
+         mediaUrls = [...new Set(mediaUrls)];
 
          for (let mediaUrl of mediaUrls) {
              // Call the advanced function from nsfw.js
