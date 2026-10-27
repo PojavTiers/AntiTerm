@@ -32,25 +32,43 @@ function parseApiScores(data) {
     return scores;
 }
 
-// NEW: Extracts the real .gif or .mp4 URL from Tenor/Klipy/Giphy links
+// UPDATED: Handles Klipy page URLs, WebP, and direct links
 async function resolveMediaUrl(url) {
-    if (url.match(/\.(jpeg|jpg|png|gif|mp4|webm)/i)) return url; // It's already a direct link
+    // If it's a direct image/video link, return it immediately
+    if (url.match(/\.(jpeg|jpg|png|gif|mp4|webm|webp)/i)) return url; 
     
     try {
         console.log(`[SCANNER] Resolving webpage link: ${url}`);
-        const res = await fetch(url);
+        const res = await fetch(url, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+        });
+        
+        if (!res.ok) {
+            console.log(`[SCANNER] Page returned status ${res.status}. Trying to find direct link anyway...`);
+        }
+        
         const html = await res.text();
         
-        // Look for OpenGraph meta tags (used by Tenor, Giphy, etc.)
-        const ogVideo = html.match(/<meta[^>]*property="og:video"[^>]*content="([^"]+)"/i);
-        if (ogVideo && ogVideo[1]) return ogVideo[1];
+        // Look for Klipy/Tenor MP4 or WebM (best for Discord)
+        const mp4Match = html.match(/(https:\/\/[^"']+\.(?:mp4|webm))/i);
+        if (mp4Match) {
+            console.log(`[SCANNER] Found direct video: ${mp4Match[0]}`);
+            return mp4Match[0];
+        }
 
-        const ogImage = html.match(/<meta[^>]*property="og:image"[^>]*content="([^"]+)"/i);
-        if (ogImage && ogImage[1]) return ogImage[1];
+        // Look for GIF
+        const gifMatch = html.match(/(https:\/\/[^"']+\.gif)/i);
+        if (gifMatch) {
+            console.log(`[SCANNER] Found direct GIF: ${gifMatch[0]}`);
+            return gifMatch[0];
+        }
 
-        // Fallback: Look for any direct video/gif link in the raw HTML
-        const rawMatch = html.match(/(https:\/\/[^"']+\.(?:gif|mp4|webm))/i);
-        if (rawMatch) return rawMatch[0];
+        // Look for WebP (Klipy's static link format)
+        const webpMatch = html.match(/(https:\/\/[^"']+\.webp)/i);
+        if (webpMatch) {
+            console.log(`[SCANNER] Found direct WebP: ${webpMatch[0]}`);
+            return webpMatch[0];
+        }
         
     } catch (e) {
         console.error("[SCANNER] Failed to resolve link:", e.message);
@@ -109,7 +127,6 @@ async function scanMedia(url, s, client) {
     if (!apiUrl.startsWith('http')) apiUrl = 'https://' + apiUrl;
 
     try {
-        // 1. Resolve the actual media URL
         const directUrl = await resolveMediaUrl(url);
         if (!directUrl) {
             console.log(`[SCANNER DEBUG] Could not find a direct media link inside: ${url}`);
@@ -118,9 +135,11 @@ async function scanMedia(url, s, client) {
 
         const isVideo = directUrl.toLowerCase().includes('.mp4') || directUrl.toLowerCase().includes('.webm');
         const isGif = directUrl.toLowerCase().includes('.gif');
+        const isWebp = directUrl.toLowerCase().includes('.webp');
 
-        // 2. Download the direct media
-        const imageResponse = await fetch(directUrl);
+        const imageResponse = await fetch(directUrl, {
+            headers: { 'User-Agent': 'Mozilla/5.0' }
+        });
         const buffer = Buffer.from(await imageResponse.arrayBuffer());
 
         if (buffer.length === 0) return { isUnsafe: false, detectedFlag: "nsfw" };
@@ -160,7 +179,8 @@ async function scanMedia(url, s, client) {
                 }
             }
         } else {
-            const scores = await sendToApi(new Blob([buffer], { type: 'image/jpeg' }), 'image.jpg');
+            // WebP and standard images go straight to the API
+            const scores = await sendToApi(new Blob([buffer], { type: isWebp ? 'image/webp' : 'image/jpeg' }), isWebp ? 'image.webp' : 'image.jpg');
             if (scores) {
                 console.log(`[SCANNER DEBUG] Scores -> Porn: ${(scores.porn*100).toFixed(2)}% | Hentai: ${(scores.hentai*100).toFixed(2)}% | Sexy: ${(scores.sexy*100).toFixed(2)}% | Drawing: ${(scores.drawing*100).toFixed(2)}%`);
                 const isHighDrawing = scores.drawing > 0.50 && s.nsfwMode === 'advanced';
