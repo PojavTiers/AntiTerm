@@ -8,7 +8,7 @@ const setActivity = require('./activity.js');
 const { connectDB, getSettings, getWhitelist } = require('./database.js');
 const { sendMessage, isAuthorized, checkViolation, applyPunishment } = require('./utils.js');
 const { getHelpContainer } = require('./help.js');
-const { scanMedia } = require('./nsfw.js'); // IMPORT THE SCANNER
+const { scanMedia } = require('./nsfw.js');
 
 ffmpeg.setFfmpegPath(ffmpegPath);
 ffmpeg.setFfprobePath(ffprobePath);
@@ -361,12 +361,12 @@ client.on('messageCreate', async (message) => {
              message.attachments.forEach(att => mediaUrls.push(att.url));
          }
 
-         // Remove duplicates so we don't scan the same link twice
+         // Remove duplicates
          mediaUrls = [...new Set(mediaUrls)];
 
          for (let mediaUrl of mediaUrls) {
-             // Call the advanced function from nsfw.js
-             const result = await scanMedia(mediaUrl, s, client);
+             // Pass the message object so nsfw.js can read Discord's embeds
+             const result = await scanMedia(mediaUrl, s, client, message);
              
              if (result.isUnsafe) {
                  await message.delete().catch(() => {});
@@ -376,7 +376,7 @@ client.on('messageCreate', async (message) => {
                  const embed = await embeds.warning('NSFW Detected', desc, message.guild, client);
                  const warningMsg = await message.channel.send({ embeds: [embed] }).catch(e => console.error("Failed to send warning:", e));
                  if (warningMsg) setTimeout(() => warningMsg.delete().catch(() => {}), 5000);
-                 break; // Stop scanning other attachments if one is bad
+                 break;
              }
          }
       }
