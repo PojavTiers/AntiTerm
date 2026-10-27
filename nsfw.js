@@ -48,7 +48,6 @@ async function scanMedia(url, s, client) {
     let isUnsafe = false;
     let detectedFlag = "nsfw";
 
-    // EXACT OLD LOGIC
     const threshold = s.nsfwMode === 'advanced' ? 0.10 : (s.nsfwMode === 'moderate' ? 0.50 : 0.70);
 
     let apiUrl = process.env.NSFW_API_URL;
@@ -60,13 +59,18 @@ async function scanMedia(url, s, client) {
     try {
         let finalUrl = url;
         
-        // Scrape page if it's a link
         if (!finalUrl.match(/\.(jpeg|jpg|png|gif|mp4|webm|mov)/i) && !finalUrl.includes('cdn.discordapp.com')) {
+            console.log(`[SCANNER] Scraping URL: ${finalUrl}`);
             const webRes = await fetch(finalUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }); 
             const html = await webRes.text();
             const mediaMatch = html.match(/(https:\/\/[^"']+\.(?:gif|mp4|webm|mov))/i);
-            if (mediaMatch) finalUrl = mediaMatch[0];
-            else return { isUnsafe: false, detectedFlag: "nsfw" };
+            if (mediaMatch) {
+                finalUrl = mediaMatch[0];
+                console.log(`[SCANNER] Found direct media: ${finalUrl}`);
+            } else {
+                console.log(`[SCANNER] Could not find direct media in HTML.`);
+                return { isUnsafe: false, detectedFlag: "nsfw" };
+            }
         }
         
         const isVideo = finalUrl.toLowerCase().includes('.mp4') || finalUrl.toLowerCase().includes('.webm') || finalUrl.toLowerCase().includes('.mov');
@@ -78,16 +82,17 @@ async function scanMedia(url, s, client) {
         const buffer = Buffer.from(imageBuffer);
         
         if (isVideo || isGif) {
+            console.log(`[SCANNER] Generating collage for video/gif...`);
             const collageBuffer = await createVideoCollage(buffer, isGif);
             if (collageBuffer) {
                 const formData = new FormData(); 
                 formData.append('image', new Blob([collageBuffer], { type: 'image/jpeg' }), 'collage.jpg');
+                console.log(`[SCANNER] Sending collage to API...`);
                 const apiRes = await fetch(apiUrl + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
                 const rawText = await apiRes.text();
                 console.log(`[SCANNER RAW RESPONSE]:`, rawText);
                 
                 const data = JSON.parse(rawText);
-                // EXACT OLD LOGIC: Check data.scores
                 if (data.safe === false || (data.scores && (data.scores.nsfw > threshold || data.scores.sexy > threshold || data.scores.hentai > threshold || data.scores.porn > threshold))) { 
                     isUnsafe = true; 
                     detectedFlag = getTopFlag(data.scores); 
@@ -97,12 +102,12 @@ async function scanMedia(url, s, client) {
             const blob = new Blob([imageBuffer], { type: contentType || 'image/jpeg' }); 
             const formData = new FormData(); 
             formData.append('image', blob, 'image.jpg');
+            console.log(`[SCANNER] Sending image to API...`);
             const response = await fetch(apiUrl + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
             const rawText = await response.text();
             console.log(`[SCANNER RAW RESPONSE]:`, rawText);
             
             const data = JSON.parse(rawText);
-            // EXACT OLD LOGIC: Check data.scores
             if (data.safe === false || (data.flags && data.flags.length > 0) || (data.scores && ((data.scores.nsfw > threshold) || (data.scores.sexy > threshold) || (data.scores.hentai > threshold) || (data.scores.porn > threshold)))) { 
                 isUnsafe = true; 
                 detectedFlag = getTopFlag(data.scores); 
