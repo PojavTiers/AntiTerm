@@ -14,6 +14,7 @@ ffmpeg.setFfmpegPath(ffmpegPath);
 ffmpeg.setFfprobePath(ffprobePath);
 
 const OWNER_ID = '1450096764672544844';
+const nsfwCooldowns = new Map(); // Tracks cooldowns for silent deletion
 
 const client = new Client({
   intents: [
@@ -33,30 +34,29 @@ function censorWord(word) {
 }
 
 async function generateConfigMenu(client, s, guild) {
-    // Fetch your custom emojis
     const settingsEmoji = await embeds.getEmoji(client, 'settings', '⚙️');
     const onlineEmoji = await embeds.getEmoji(client, 'online_t', '🟢');
     const offlineEmoji = await embeds.getEmoji(client, 'offline_t', '🔴');
     const shieldEmoji = await embeds.getEmoji(client, 'shield', '🛡️');
     
-    // Fetch the new custom config emojis
     const config1 = await embeds.getEmoji(client, 'config_1', '⚙️');
     const config2 = await embeds.getEmoji(client, 'config_2', '🛡️');
     const config3 = await embeds.getEmoji(client, 'config_3', '⚙️');
     
-    // Status formatting
     const status = s.antiNsfw ? `${onlineEmoji} **Enabled**` : `${offlineEmoji} **Disabled**`;
     const wordCount = s.words ? s.words.length : 0;
     const userCount = s.allowedUsers ? s.allowedUsers.length : 0;
+    const showMsg = s.nsfwShowMsg !== false ? 'Yes' : 'No';
+    const thresh = s.nsfwMode === 'custom' ? `Custom (${s.nsfwCustomThreshold})` : s.nsfwMode.toUpperCase();
     
-    // V2 Text Display matching your screenshot's clean layout
     const textDisplay = new TextDisplayBuilder().setContent(`
 ${shieldEmoji} **AntiTerm Configuration**
 
 **NSFW Scanner**
 Status: ${status}
-Mode: \`${s.nsfwMode.toUpperCase()}\`
+Mode: ${thresh}
 Punishment: \`${s.nsfwPunish.toUpperCase()}\`
+Warn Message: \`${showMsg}\`
 
 **Text Filter**
 Blocked Words: \`${wordCount}\`
@@ -65,37 +65,18 @@ Whitelisted Users: \`${userCount}\`
 Pick a category below to configure your security settings.
     `);
 
-    // We use a StringSelectMenu as the "Button" from your screenshot
     const selectMenu = new StringSelectMenuBuilder()
         .setCustomId('config_menu')
         .setPlaceholder('Choose a category')
         .addOptions([
-            { 
-                label: 'Scanner Settings', 
-                description: 'Toggle scanner, mode, and punishment', 
-                value: 'action_scanner_menu', 
-                emoji: config1 // Using config_1
-            },
-            { 
-                label: 'Text Filter', 
-                description: 'Manage blocked words', 
-                value: 'action_filter_menu', 
-                emoji: config2 // Using config_2
-            },
-            { 
-                label: 'Whitelist', 
-                description: 'Manage authorized users', 
-                value: 'action_whitelist_menu', 
-                emoji: config3 // Using config_3
-            }
+            { label: 'Scanner Settings', description: 'Toggle scanner, mode, and punishment', value: 'action_scanner_menu', emoji: config1 },
+            { label: 'Text Filter', description: 'Manage blocked words', value: 'action_filter_menu', emoji: config2 },
+            { label: 'Whitelist', description: 'Manage authorized users', value: 'action_whitelist_menu', emoji: config3 }
         ]);
 
-    const row = new ActionRowBuilder().addComponents(selectMenu);
-
-    // We wrap it in a container to mimic that dark box look in the screenshot
     return new ContainerBuilder()
         .addTextDisplayComponents(textDisplay)
-        .addActionRowComponents(row);
+        .addActionRowComponents(new ActionRowBuilder().addComponents(selectMenu));
 }
 
 client.once('clientReady', async () => {
@@ -145,7 +126,8 @@ client.on('interactionCreate', async (interaction) => {
                   .addOptions([
                       { label: 'Toggle Scanner', description: 'Turn the NSFW media scanner on or off', value: 'action_toggle_nsfw' },
                       { label: 'Scanner Mode', description: 'Change the AI strictness', value: 'action_mode' },
-                      { label: 'Punishment', description: 'Set what happens to rule breakers', value: 'action_punish' }
+                      { label: 'Punishment', description: 'Set what happens to rule breakers', value: 'action_punish' },
+                      { label: 'Toggle Warn Message', description: 'Enable or disable the NSFW warning message', value: 'action_toggle_warn' }
                   ]);
               return interaction.reply({ components: [new ActionRowBuilder().addComponents(menu)], ephemeral: true });
           }
@@ -181,6 +163,18 @@ client.on('interactionCreate', async (interaction) => {
           
           const action = interaction.values[0];
 
+          // NEW TOGGLE SCANNER LOGIC
+          if (action === 'action_toggle_nsfw') {
+              const toggleMenu = new StringSelectMenuBuilder()
+                  .setCustomId('select_toggle')
+                  .setPlaceholder('Choose On or Off')
+                  .addOptions([
+                      { label: 'On', description: 'Enable the NSFW Scanner', value: 'toggle_on' },
+                      { label: 'Off', description: 'Disable the NSFW Scanner', value: 'toggle_off' }
+                  ]);
+              return interaction.reply({ components: [new ActionRowBuilder().addComponents(toggleMenu)], ephemeral: true });
+          }
+
           if (action === 'action_add_word') {
               const modal = new ModalBuilder().setCustomId('modal_filter_add').setTitle('Add Filtered Words');
               const input = new TextInputBuilder().setCustomId('word_input').setLabel('Words (Separate with commas)').setPlaceholder('word1, word2, word3').setStyle(TextInputStyle.Paragraph).setRequired(true);
@@ -213,22 +207,21 @@ client.on('interactionCreate', async (interaction) => {
               return interaction.showModal(modal);
           }
 
-          await interaction.deferUpdate();
-
-          if (action === 'action_toggle_nsfw') {
-              s.antiNsfw = !s.antiNsfw;
+          if (action === 'action_toggle_warn') {
+              s.nsfwShowMsg = !s.nsfwShowMsg;
               await s.save();
-              const menu = await generateConfigMenu(client, s, interaction.guild);
-              return interaction.editReply({ components: [menu], flags: MessageFlags.IsComponentsV2 });
+              await interaction.reply({ content: `✅ Warn message is now **${s.nsfwShowMsg ? 'ON' : 'OFF'}**.`, ephemeral: true });
+              return;
           }
 
           if (action === 'action_mode') {
               const modeSelect = new StringSelectMenuBuilder().setCustomId('select_mode').setPlaceholder('Select a mode').addOptions([
                   { label: 'Basic', description: 'Only hardcore porn', value: 'basic' },
                   { label: 'Moderate', description: 'Standard filtering', value: 'moderate' },
-                  { label: 'Advanced', description: 'Strict (bikinis, suggestive)', value: 'advanced' }
+                  { label: 'Advanced', description: 'Strict (bikinis, suggestive)', value: 'advanced' },
+                  { label: 'Custom', description: 'Set your own threshold', value: 'custom' }
               ]);
-              return interaction.followUp({ content: 'Select the new mode:', components: [new ActionRowBuilder().addComponents(modeSelect)], ephemeral: true });
+              return interaction.reply({ content: 'Select the new mode:', components: [new ActionRowBuilder().addComponents(modeSelect)], ephemeral: true });
           }
 
           if (action === 'action_punish') {
@@ -236,39 +229,51 @@ client.on('interactionCreate', async (interaction) => {
                   { label: 'Delete', value: 'delete' }, { label: 'Mute', value: 'mute' },
                   { label: 'Kick', value: 'kick' }, { label: 'Ban', value: 'ban' }
               ]);
-              return interaction.followUp({ content: 'Select the punishment:', components: [new ActionRowBuilder().addComponents(punishSelect)], ephemeral: true });
+              return interaction.reply({ content: 'Select the punishment:', components: [new ActionRowBuilder().addComponents(punishSelect)], ephemeral: true });
           }
 
           if (action === 'action_list_words') {
               const words = s.words && s.words.length > 0 ? s.words.map(w => `\`${w}\``).join(', ') : 'None';
-              return interaction.followUp({ content: `➜ **Filtered Words:** ${words}`, ephemeral: true });
+              return interaction.reply({ content: `➜ **Filtered Words:** ${words}`, ephemeral: true });
           }
 
           if (action === 'action_list_users') {
               const users = s.allowedUsers && s.allowedUsers.length > 0 ? s.allowedUsers.map(id => `<@${id}>`).join(', ') : 'None';
-              return interaction.followUp({ content: `➜ **Whitelisted Users:** ${users}`, ephemeral: true });
+              return interaction.reply({ content: `➜ **Whitelisted Users:** ${users}`, ephemeral: true });
           }
       }
 
-      // --- 3. SECONDARY SELECTS (Mode / Punish) ---
-      if (interaction.isStringSelectMenu() && (interaction.customId === 'select_mode' || interaction.customId === 'select_punish')) {
+      // --- 3. SECONDARY SELECTS (Mode / Punish / Toggle) ---
+      if (interaction.isStringSelectMenu() && ['select_mode', 'select_punish', 'select_toggle'].includes(interaction.customId)) {
           if (!isAuthorized(interaction.member, s)) return;
-          await interaction.deferUpdate();
+
+          if (interaction.customId === 'select_toggle') {
+              s.antiNsfw = interaction.values[0] === 'toggle_on';
+              await s.save();
+              await interaction.reply({ content: `✅ Scanner is now **${s.antiNsfw ? 'ON' : 'OFF'}**.`, ephemeral: true });
+              return;
+          }
 
           if (interaction.customId === 'select_mode') {
-              s.nsfwMode = interaction.values[0];
-              await s.save();
-              const menu = await generateConfigMenu(client, s, interaction.guild);
-              await interaction.editReply({ components: [menu], flags: MessageFlags.IsComponentsV2 });
-              return interaction.followUp({ content: `✅ Mode changed to **${s.nsfwMode.toUpperCase()}**`, ephemeral: true });
+              const val = interaction.values[0];
+              if (val === 'custom') {
+                  const modal = new ModalBuilder().setCustomId('modal_custom_thresh').setTitle('Custom Threshold');
+                  const input = new TextInputBuilder().setCustomId('thresh_input').setLabel('Enter a number (0.01 to 0.99)').setStyle(TextInputStyle.Short).setRequired(true);
+                  modal.addComponents(new ActionRowBuilder().addComponents(input));
+                  return interaction.showModal(modal);
+              } else {
+                  s.nsfwMode = val;
+                  await s.save();
+                  await interaction.reply({ content: `✅ Mode changed to **${s.nsfwMode.toUpperCase()}**.`, ephemeral: true });
+                  return;
+              }
           }
 
           if (interaction.customId === 'select_punish') {
               s.nsfwPunish = interaction.values[0];
               await s.save();
-              const menu = await generateConfigMenu(client, s, interaction.guild);
-              await interaction.editReply({ components: [menu], flags: MessageFlags.IsComponentsV2 });
-              return interaction.followUp({ content: `✅ Punishment changed to **${s.nsfwPunish.toUpperCase()}**`, ephemeral: true });
+              await interaction.reply({ content: `✅ Punishment changed to **${s.nsfwPunish.toUpperCase()}**.`, ephemeral: true });
+              return;
           }
       }
 
@@ -276,27 +281,29 @@ client.on('interactionCreate', async (interaction) => {
       if (interaction.isModalSubmit()) {
           if (!isAuthorized(interaction.member, s)) return;
           await interaction.deferReply({ ephemeral: true });
-          const input = interaction.fields.getTextInputValue('word_input') || interaction.fields.getTextInputValue('user_id');
+          const input = interaction.fields.getTextInputValue('word_input') || interaction.fields.getTextInputValue('user_id') || interaction.fields.getTextInputValue('thresh_input');
+
+          if (interaction.customId === 'modal_custom_thresh') {
+              const parsed = parseFloat(input);
+              if (isNaN(parsed) || parsed <= 0 || parsed >= 1) return interaction.editReply({ content: '❌ Invalid number. Must be between 0.01 and 0.99.' });
+              s.nsfwMode = 'custom';
+              s.nsfwCustomThreshold = parsed;
+              await s.save();
+              return interaction.editReply({ content: `✅ Custom threshold set to **${parsed}**.` });
+          }
 
           if (interaction.customId === 'modal_filter_add') {
               const newWords = input.split(',').map(w => w.toLowerCase().trim()).filter(w => w.length > 0);
               if (!s.words) s.words = [];
-              
               let addedCount = 0;
               let duplicateCount = 0;
-
               for (const word of newWords) {
-                  if (s.words.includes(word)) {
-                      duplicateCount++;
-                  } else {
-                      s.words.push(word);
-                      addedCount++;
-                  }
+                  if (s.words.includes(word)) duplicateCount++;
+                  else { s.words.push(word); addedCount++; }
               }
               await s.save();
-              
-              let response = `✅ Successfully added **${addedCount}** word(s) to the filter.`;
-              if (duplicateCount > 0) response += `\n⚠️ Skipped **${duplicateCount}** word(s) already filtered.`;
+              let response = `✅ Successfully added **${addedCount}** word(s).`;
+              if (duplicateCount > 0) response += `\n⚠️ Skipped **${duplicateCount}**.`;
               return interaction.editReply({ content: response });
           }
 
@@ -304,10 +311,10 @@ client.on('interactionCreate', async (interaction) => {
               const word = input.toLowerCase().trim();
               if (!s.words) s.words = [];
               const index = s.words.indexOf(word);
-              if (index === -1) return interaction.editReply({ content: '❌ Word not found in filter.' });
+              if (index === -1) return interaction.editReply({ content: '❌ Word not found.' });
               s.words.splice(index, 1);
               await s.save();
-              return interaction.editReply({ content: `✅ Removed \`${word}\` from filter.` });
+              return interaction.editReply({ content: `✅ Removed \`${word}\`.` });
           }
 
           if (interaction.customId === 'modal_user_add') {
@@ -326,7 +333,7 @@ client.on('interactionCreate', async (interaction) => {
               if (index === -1) return interaction.editReply({ content: '❌ User is not whitelisted.' });
               s.allowedUsers.splice(index, 1);
               await s.save();
-              return interaction.editReply({ content: `✅ Removed <@${userId}> from whitelist.` });
+              return interaction.editReply({ content: `✅ Removed <@${userId}>.` });
           }
       }
 
@@ -372,7 +379,6 @@ client.on('messageCreate', async (message) => {
           const collector = msg.createMessageComponentCollector({ componentType: ComponentType.StringSelect, time: 60000 });
           collector.on('collect', async i => {
               if (i.user.id !== message.author.id) return i.reply({ content: "Not your menu.", ephemeral: true });
-              
               const page = i.values[0] === 'help_page_2' ? 2 : 1;
               const newMenu = await getHelpContainer(page, client, 2);
               await i.update({ components: [newMenu], flags: MessageFlags.IsComponentsV2 });
@@ -384,7 +390,6 @@ client.on('messageCreate', async (message) => {
       if (s.words && s.words.length > 0) {
         let textToScan = message.content;
         if (message.messageSnapshots.size > 0) textToScan += " " + message.messageSnapshots.first().content;
-
         let violation = false;
         if (s.words.some(w => checkViolation(textToScan, w))) violation = true;
 
@@ -427,11 +432,23 @@ client.on('messageCreate', async (message) => {
              if (result.isUnsafe) {
                  await message.delete().catch(() => {});
                  await applyPunishment(message.member, s.nsfwPunish, s.nsfwDur, 'Posted NSFW media.', message, client);
-                 const censoredFlag = censorWord(result.detectedFlag);
-                 const desc = `<@${message.author.id}> That image is not allowed on this server, flagged \`${censoredFlag}\``;
-                 const embed = await embeds.warning('NSFW Detected', desc, message.guild, client);
-                 const warningMsg = await message.channel.send({ embeds: [embed] }).catch(e => console.error("Failed to send warning:", e));
-                 if (warningMsg) setTimeout(() => warningMsg.delete().catch(() => {}), 5000);
+                 
+                 // 2-SECOND COOLDOWN LOGIC
+                 const now = Date.now();
+                 const userCooldown = nsfwCooldowns.get(message.author.id);
+                 
+                 if (!userCooldown || now - userCooldown > 2000) {
+                     nsfwCooldowns.set(message.author.id, now);
+                     
+                     // Only send warning if toggle is ON
+                     if (s.nsfwShowMsg !== false) {
+                         const censoredFlag = censorWord(result.detectedFlag);
+                         const desc = `<@${message.author.id}> That image is not allowed on this server, flagged \`${censoredFlag}\``;
+                         const embed = await embeds.warning('NSFW Detected', desc, message.guild, client);
+                         const warningMsg = await message.channel.send({ embeds: [embed] }).catch(e => console.error("Failed to send warning:", e));
+                         if (warningMsg) setTimeout(() => warningMsg.delete().catch(() => {}), 5000);
+                     }
+                 }
                  break; 
              }
          }
