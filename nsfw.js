@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
+// Parses the exact JSON your API returns
 function parseApiScores(data) {
     const scores = { porn: 0, hentai: 0, sexy: 0, drawing: 0, neutral: 0 };
     if (data && data.predictions) {
@@ -79,7 +80,6 @@ async function scanMedia(url, s, client) {
     let isUnsafe = false;
     let detectedFlag = "nsfw";
     
-    // NEW: Handle Custom Threshold
     let threshold = 0.50;
     if (s.nsfwMode === 'advanced') threshold = 0.10;
     else if (s.nsfwMode === 'moderate') threshold = 0.50;
@@ -103,7 +103,6 @@ async function scanMedia(url, s, client) {
         const isVideo = finalUrl.toLowerCase().includes('.mp4') || finalUrl.toLowerCase().includes('.webm') || finalUrl.toLowerCase().includes('.mov');
         const isGif = finalUrl.toLowerCase().includes('.gif');
         const imageResponse = await fetch(finalUrl);
-        const contentType = imageResponse.headers.get('content-type');
         const buffer = Buffer.from(await imageResponse.arrayBuffer());
         
         let imgBuffer = buffer;
@@ -124,11 +123,15 @@ async function scanMedia(url, s, client) {
         
         console.log(`[SCANNER DEBUG] Threshold: ${threshold} | Porn: ${(scores.porn*100).toFixed(2)}% | Hentai: ${(scores.hentai*100).toFixed(2)}% | Sexy: ${(scores.sexy*100).toFixed(2)}% | Drawing: ${(scores.drawing*100).toFixed(2)}%`);
 
-        const isHighDrawing = scores.drawing > 0.80 && s.nsfwMode === 'advanced';
-
-        if (data.safe === false || (scores.porn > threshold || scores.sexy > threshold || scores.hentai > threshold) || isHighDrawing) { 
+        // FORCE DELETE IF IT IS A DRAWING IN ADVANCED MODE
+        if (s.nsfwMode === 'advanced' && scores.drawing > 0.80) {
+            console.log(`[SCANNER DEBUG] FORCE FLAGGED: High Drawing detected in Advanced mode.`);
+            isUnsafe = true;
+            detectedFlag = 'hentai';
+        } 
+        else if (scores.porn > threshold || scores.sexy > threshold || scores.hentai > threshold) { 
             isUnsafe = true; 
-            detectedFlag = isHighDrawing ? 'hentai' : getTopFlag(scores); 
+            detectedFlag = getTopFlag(scores); 
         }
     } catch (err) { console.error("[SCANNER ERROR]:", err); }
 
