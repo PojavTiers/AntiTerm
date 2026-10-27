@@ -26,12 +26,11 @@ const client = new Client({
   ],
 });
 
-// Parser for the NSFW API array format
 function parseApiScores(predictionArray) {
     const scores = { porn: 0, hentai: 0, sexy: 0, drawing: 0, neutral: 0 };
     if (Array.isArray(predictionArray)) {
         for (const item of predictionArray) {
-            const className = item.className.toLowerCase();
+            const className = (item.className || '').toLowerCase();
             if (className === 'porn') scores.porn = item.probability;
             if (className === 'hentai') scores.hentai = item.probability;
             if (className === 'sexy') scores.sexy = item.probability;
@@ -65,7 +64,6 @@ function censorWord(word) {
     return word;
 }
 
-// PERFECT VIDEO COLLAGE: 9 evenly spaced frames in a 3x3 grid
 async function createVideoCollage(videoBuffer, isGif = false) {
     const tempVideoPath = path.join(os.tmpdir(), `vid_${Date.now()}.${isGif ? 'gif' : 'mp4'}`);
     const outputPath = path.join(os.tmpdir(), `collage_${Date.now()}.jpg`);
@@ -77,16 +75,15 @@ async function createVideoCollage(videoBuffer, isGif = false) {
                 .on('end', resolve)
                 .on('error', reject)
                 .outputOptions([
-                    // Grab 9 frames evenly, scale to 256x256, tile 3x3
                     '-vf', 'select=\'not(mod(n\\,15))\',scale=256:256,tile=3x3', 
                     '-frames:v', '1', 
-                    '-q:v', '4' // High quality JPEG
+                    '-q:v', '4'
                 ])
                 .save(outputPath);
         });
         return fs.readFileSync(outputPath);
     } catch (err) {
-        console.error("Collage Error:", err);
+        console.error("[SCANNER ERROR] Collage generation failed:", err);
         return null;
     } finally {
         if (fs.existsSync(tempVideoPath)) fs.unlinkSync(tempVideoPath);
@@ -446,6 +443,16 @@ client.on('messageCreate', async (message) => {
                  
                  let apiUrl = process.env.NSFW_API_URL;
                  let apiKey = process.env.NSFW_API_KEY;
+                 
+                 if (!apiUrl) {
+                     console.error("[SCANNER CRITICAL] NSFW_API_URL is missing in Railway Variables!");
+                     return;
+                 }
+                 if (!apiKey) {
+                     console.error("[SCANNER CRITICAL] NSFW_API_KEY is missing in Railway Variables!");
+                     return;
+                 }
+
                  if (!apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
                      apiUrl = 'https://' + apiUrl;
                  }
@@ -454,16 +461,24 @@ client.on('messageCreate', async (message) => {
                      const formData = new FormData(); 
                      formData.append('image', imageBlob, 'image.jpg');
                      
+                     console.log(`[SCANNER] Sending request to: ${apiUrl}/classify`);
+                     
                      const apiRes = await fetch(apiUrl + '/classify', { 
                          method: 'POST', 
                          body: formData,
                          headers: { 'Authorization': `Bearer ${apiKey}` }
                      });
                      
-                     if (!apiRes.ok) return;
+                     // NEW LOGGING: Print HTTP Status
+                     console.log(`[SCANNER] HTTP Status: ${apiRes.status} ${apiRes.statusText}`);
 
                      const rawData = await apiRes.text();
                      
+                     if (!apiRes.ok) {
+                         console.error(`[SCANNER CRITICAL] API rejected request. Raw Body:`, rawData);
+                         return;
+                     }
+
                      try {
                          const data = JSON.parse(rawData);
                          const scores = parseApiScores(data.prediction);
@@ -486,19 +501,21 @@ client.on('messageCreate', async (message) => {
                              console.log(`[SCANNER DEBUG] Passed. Image deemed SAFE.`);
                          }
                      } catch(e) {
-                         console.error("Failed to parse API JSON:", e, rawData);
+                         console.error("[SCANNER CRITICAL] Failed to parse API JSON. Raw Body:", rawData);
                      }
                  };
 
                  if (isVideo || isGif) {
                      const collageBuffer = await createVideoCollage(buffer, isGif);
                      if (collageBuffer) {
+                         console.log(`[SCANNER] Sending COLLAGE...`);
                          await scanImage(new Blob([collageBuffer], { type: 'image/jpeg' }));
                      }
                  } else {
+                     console.log(`[SCANNER] Sending IMAGE...`);
                      await scanImage(new Blob([imageBuffer], { type: contentType || 'image/jpeg' }));
                  }
-             } catch (err) { console.error("Scanner Error:", err); }
+             } catch (err) { console.error("[SCANNER ERROR] Catch block:", err); }
          }
 
          if (isUnsafe) {
@@ -516,7 +533,6 @@ client.on('messageCreate', async (message) => {
   }
 });
 
-// Start Bot
 connectDB().then(() => {
     client.login(process.env.DISCORD_TOKEN);
 });
