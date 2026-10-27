@@ -32,7 +32,32 @@ function parseApiScores(data) {
     return scores;
 }
 
-// BULLETPROOF COLLAGE GENERATOR
+// NEW: Extracts the real .gif or .mp4 URL from Tenor/Klipy/Giphy links
+async function resolveMediaUrl(url) {
+    if (url.match(/\.(jpeg|jpg|png|gif|mp4|webm)/i)) return url; // It's already a direct link
+    
+    try {
+        console.log(`[SCANNER] Resolving webpage link: ${url}`);
+        const res = await fetch(url);
+        const html = await res.text();
+        
+        // Look for OpenGraph meta tags (used by Tenor, Giphy, etc.)
+        const ogVideo = html.match(/<meta[^>]*property="og:video"[^>]*content="([^"]+)"/i);
+        if (ogVideo && ogVideo[1]) return ogVideo[1];
+
+        const ogImage = html.match(/<meta[^>]*property="og:image"[^>]*content="([^"]+)"/i);
+        if (ogImage && ogImage[1]) return ogImage[1];
+
+        // Fallback: Look for any direct video/gif link in the raw HTML
+        const rawMatch = html.match(/(https:\/\/[^"']+\.(?:gif|mp4|webm))/i);
+        if (rawMatch) return rawMatch[0];
+        
+    } catch (e) {
+        console.error("[SCANNER] Failed to resolve link:", e.message);
+    }
+    return null;
+}
+
 async function generateCollage(videoBuffer, isGif = false) {
     const ext = isGif ? 'gif' : 'mp4';
     const tempVideoPath = path.join(os.tmpdir(), `vid_${Date.now()}.${ext}`);
@@ -48,19 +73,12 @@ async function generateCollage(videoBuffer, isGif = false) {
                     reject(err);
                 });
 
-            // Force input format
-            command.inputOptions([
-                '-f', ext, 
-                '-vsync', 'vfr' // Fix for GIF freezing
-            ]);
-
+            command.inputOptions(['-f', ext, '-vsync', 'vfr']);
             command.outputOptions([
-                // Scale to 400px width, preserve aspect ratio, pad to make it square (prevents stretching), tile 3x3
                 '-vf', 'fps=1,scale=400:400:force_original_aspect_ratio=decrease,pad=400:400:(ow-iw)/2:(oh-ih)/2:color=black,tile=3x3',
                 '-frames:v', '1',
                 '-q:v', '3'
-            ])
-            .save(outputPath);
+            ]).save(outputPath);
         });
 
         if (fs.existsSync(outputPath)) {
@@ -90,12 +108,22 @@ async function scanMedia(url, s, client) {
     if (!apiUrl || !apiKey) return { isUnsafe: false, detectedFlag: "nsfw" };
     if (!apiUrl.startsWith('http')) apiUrl = 'https://' + apiUrl;
 
-    const isVideo = url.toLowerCase().includes('.mp4') || url.toLowerCase().includes('.webm');
-    const isGif = url.toLowerCase().includes('.gif');
-
     try {
-        const imageResponse = await fetch(url);
+        // 1. Resolve the actual media URL
+        const directUrl = await resolveMediaUrl(url);
+        if (!directUrl) {
+            console.log(`[SCANNER DEBUG] Could not find a direct media link inside: ${url}`);
+            return { isUnsafe: false, detectedFlag: "nsfw" };
+        }
+
+        const isVideo = directUrl.toLowerCase().includes('.mp4') || directUrl.toLowerCase().includes('.webm');
+        const isGif = directUrl.toLowerCase().includes('.gif');
+
+        // 2. Download the direct media
+        const imageResponse = await fetch(directUrl);
         const buffer = Buffer.from(await imageResponse.arrayBuffer());
+
+        if (buffer.length === 0) return { isUnsafe: false, detectedFlag: "nsfw" };
 
         const sendToApi = async (blob, filename) => {
             const formData = new FormData(); 
@@ -108,32 +136,23 @@ async function scanMedia(url, s, client) {
             });
 
             if (!apiRes.ok) {
-                const errText = await apiRes.text();
-                console.error(`[SCANNER CRITICAL] API rejected request: ${apiRes.status} | Body: ${errText}`);
+                console.error(`[SCANNER CRITICAL] API rejected: ${apiRes.status} | ${await apiRes.text()}`);
                 return null;
             }
 
             const rawData = await apiRes.text();
-            try {
-                return parseApiScores(JSON.parse(rawData));
-            } catch(e) {
-                return null;
-            }
+            try { return parseApiScores(JSON.parse(rawData)); } catch(e) { return null; }
         };
 
         if (isVideo || isGif) {
-            console.log(`[SCANNER] Generating bulletproof collage for ${isGif ? 'GIF' : 'Video'}...`);
+            console.log(`[SCANNER] Generating collage for ${isGif ? 'GIF' : 'Video'}...`);
             const collage = await generateCollage(buffer, isGif);
             
-            if (!collage) {
-                console.log("[SCANNER DEBUG] FFmpeg failed to make a collage. Skipping.");
-                return { isUnsafe: false, detectedFlag: "nsfw" };
-            }
+            if (!collage) return { isUnsafe: false, detectedFlag: "nsfw" };
 
             const scores = await sendToApi(new Blob([collage], { type: 'image/jpeg' }), 'collage.jpg');
             if (scores) {
                 console.log(`[SCANNER DEBUG] Scores -> Porn: ${(scores.porn*100).toFixed(2)}% | Hentai: ${(scores.hentai*100).toFixed(2)}% | Sexy: ${(scores.sexy*100).toFixed(2)}% | Drawing: ${(scores.drawing*100).toFixed(2)}%`);
-                
                 const isHighDrawing = scores.drawing > 0.50 && s.nsfwMode === 'advanced';
                 if (scores.porn > threshold || scores.hentai > threshold || scores.sexy > threshold || isHighDrawing) {
                     isUnsafe = true;
@@ -144,7 +163,6 @@ async function scanMedia(url, s, client) {
             const scores = await sendToApi(new Blob([buffer], { type: 'image/jpeg' }), 'image.jpg');
             if (scores) {
                 console.log(`[SCANNER DEBUG] Scores -> Porn: ${(scores.porn*100).toFixed(2)}% | Hentai: ${(scores.hentai*100).toFixed(2)}% | Sexy: ${(scores.sexy*100).toFixed(2)}% | Drawing: ${(scores.drawing*100).toFixed(2)}%`);
-                
                 const isHighDrawing = scores.drawing > 0.50 && s.nsfwMode === 'advanced';
                 if (scores.porn > threshold || scores.hentai > threshold || scores.sexy > threshold || isHighDrawing) {
                     isUnsafe = true;
