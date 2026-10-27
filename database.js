@@ -4,6 +4,8 @@ const settingsSchema = new mongoose.Schema({
     guildId: { type: String, required: true, unique: true },
     antiNsfw: { type: Boolean, default: false },
     nsfwMode: { type: String, default: 'moderate' },
+    nsfwCustomThreshold: { type: Number, default: 0.5 }, // NEW
+    nsfwShowMsg: { type: Boolean, default: true },      // NEW
     nsfwPunish: { type: String, default: 'delete' },
     nsfwDur: { type: String, default: '1h' },
     words: { type: [String], default: [] },
@@ -37,18 +39,14 @@ async function getWhitelist() {
     
     let updated = false;
 
-    // 1. Hardcoded Main Server
     const MAIN_SERVER_ID = '1500445119185293404'; 
     if (!config.allowedGuilds.includes(MAIN_SERVER_ID)) {
         config.allowedGuilds.push(MAIN_SERVER_ID);
         updated = true;
     }
 
-    // 2. Read from Railway ALLOWED_GUILDS variable
     if (process.env.ALLOWED_GUILDS) {
-        // Split by comma and remove any accidental spaces
         const envGuilds = process.env.ALLOWED_GUILDS.split(',').map(id => id.trim());
-        
         for (const guildId of envGuilds) {
             if (guildId && guildId.length > 10 && !config.allowedGuilds.includes(guildId)) {
                 config.allowedGuilds.push(guildId);
@@ -60,7 +58,6 @@ async function getWhitelist() {
 
     if (updated) {
         await config.save();
-        console.log(`[DEBUG] MongoDB whitelist updated. Current list: ${config.allowedGuilds.join(', ')}`);
     }
     
     return config;
