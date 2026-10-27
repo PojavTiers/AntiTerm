@@ -2,15 +2,13 @@ const { Client, GatewayIntentBits, ComponentType, MessageFlags, ActionRowBuilder
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegPath = require('ffmpeg-static');
 const ffprobePath = require('ffprobe-static').path;
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
 
 const embeds = require('./embeds.js');
 const setActivity = require('./activity.js');
 const { connectDB, getSettings, getWhitelist } = require('./database.js');
-const { sendMessage, isAuthorized, checkViolation, applyPunishment, getNsfwThreshold } = require('./utils.js');
+const { sendMessage, isAuthorized, checkViolation, applyPunishment } = require('./utils.js');
 const { getHelpContainer } = require('./help.js');
+const { scanMedia } = require('./nsfw.js'); // IMPORT THE NEW FILE
 
 ffmpeg.setFfmpegPath(ffmpegPath);
 ffmpeg.setFfprobePath(ffprobePath);
@@ -26,56 +24,6 @@ const client = new Client({
   ],
 });
 
-// BULLETPROOF PARSER: Handles arrays, nested objects, and different capitalization
-function parseApiScores(data) {
-    const scores = { porn: 0, hentai: 0, sexy: 0, drawing: 0, neutral: 0 };
-    
-    // Find the array no matter where it is
-    let array = null;
-    if (Array.isArray(data)) array = data;
-    else if (data && Array.isArray(data.prediction)) array = data.prediction;
-    else if (data && Array.isArray(data.predictions)) array = data.predictions;
-    else if (data && Array.isArray(data.data)) array = data.data;
-
-    if (array) {
-        for (const item of array) {
-            const className = (item.className || item.label || item.class || '').toLowerCase();
-            const prob = parseFloat(item.probability || item.score || item.confidence || 0);
-            
-            if (className === 'porn') scores.porn = prob;
-            if (className === 'hentai') scores.hentai = prob;
-            if (className === 'sexy') scores.sexy = prob;
-            if (className === 'drawing') scores.drawing = prob;
-            if (className === 'neutral') scores.neutral = prob;
-        }
-    } else if (data && typeof data === 'object') {
-        // Fallback if the API returns a flat object like { hentai: 0.99 }
-        for (const key of Object.keys(data)) {
-            const k = key.toLowerCase();
-            const val = parseFloat(data[key]);
-            if (!isNaN(val) && scores[k] !== undefined) {
-                scores[k] = val;
-            }
-        }
-    }
-    return scores;
-}
-
-function getTopFlag(scores) {
-    if (!scores) return "nsfw";
-    const flags = ['porn', 'hentai', 'sexy', 'drawing'];
-    let highest = "nsfw";
-    let maxScore = 0;
-    for (const flag of flags) {
-        if (scores[flag] && scores[flag] > maxScore) {
-            maxScore = scores[flag];
-            highest = flag;
-        }
-    }
-    if (highest === 'drawing') return 'hentai'; 
-    return highest;
-}
-
 function censorWord(word) {
     if (word === 'porn') return 'p*rn';
     if (word === 'hentai') return 'h*ntai';
@@ -84,33 +32,7 @@ function censorWord(word) {
     return word;
 }
 
-async function createVideoCollage(videoBuffer, isGif = false) {
-    const tempVideoPath = path.join(os.tmpdir(), `vid_${Date.now()}.${isGif ? 'gif' : 'mp4'}`);
-    const outputPath = path.join(os.tmpdir(), `collage_${Date.now()}.jpg`);
-    fs.writeFileSync(tempVideoPath, videoBuffer);
-
-    try {
-        await new Promise((resolve, reject) => {
-            ffmpeg(tempVideoPath)
-                .on('end', resolve)
-                .on('error', reject)
-                .outputOptions([
-                    '-vf', 'select=\'not(mod(n\\,15))\',scale=256:256,tile=3x3', 
-                    '-frames:v', '1', 
-                    '-q:v', '4'
-                ])
-                .save(outputPath);
-        });
-        return fs.readFileSync(outputPath);
-    } catch (err) {
-        console.error("[SCANNER ERROR] Collage generation failed:", err);
-        return null;
-    } finally {
-        if (fs.existsSync(tempVideoPath)) fs.unlinkSync(tempVideoPath);
-        if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
-    }
-}
-
+// ... [PASTE YOUR generateConfigMenu function HERE from the previous code] ...
 async function generateConfigMenu(client, s, guild) {
     const settingsEmoji = await embeds.getEmoji(client, 'settings', '⚙️');
     const onlineEmoji = await embeds.getEmoji(client, 'online_t', '🟢');
@@ -414,15 +336,8 @@ client.on('messageCreate', async (message) => {
         }
       }
 
-      // AI SCANNER
+      // AI SCANNER (Using the new nsfw.js file)
       if (s.antiNsfw) {
-         let threshold = 0.50;
-         if (s.nsfwMode === 'advanced') threshold = 0.05;
-         else if (s.nsfwMode === 'moderate') threshold = 0.25;
-         else if (s.nsfwMode === 'basic') threshold = 0.50;
-
-         let isUnsafe = false;
-         let detectedFlag = "nsfw";
          let mediaUrls = []; 
 
          if (message.embeds.length > 0) {
@@ -445,96 +360,19 @@ client.on('messageCreate', async (message) => {
          if (message.content.match(/https?:\/\/[^\s]+/)) mediaUrls.push(message.content.match(/https?:\/\/[^\s]+/)[0]);
 
          for (let mediaUrl of mediaUrls) {
-             if (isUnsafe) break;
-             try {
-                 let finalUrl = mediaUrl;
-                 if (!finalUrl.match(/\.(jpeg|jpg|png|gif|mp4|webm)/i) && !finalUrl.includes('cdn.discordapp.com')) {
-                     const webRes = await fetch(finalUrl); const html = await webRes.text();
-                     const mediaMatch = html.match(/(https:\/\/[^"']+\.(?:gif|mp4|webm))/i);
-                     if (mediaMatch) finalUrl = mediaMatch[0]; else continue;
-                 }
-                 
-                 const isVideo = finalUrl.toLowerCase().includes('.mp4') || finalUrl.toLowerCase().includes('.webm');
-                 const isGif = finalUrl.toLowerCase().includes('.gif');
-                 const imageResponse = await fetch(finalUrl);
-                 const contentType = imageResponse.headers.get('content-type');
-                 const imageBuffer = await imageResponse.arrayBuffer();
-                 const buffer = Buffer.from(imageBuffer);
-                 
-                 let apiUrl = process.env.NSFW_API_URL;
-                 let apiKey = process.env.API_KEY; 
-                 
-                 if (!apiUrl || !apiKey) return;
-
-                 if (!apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
-                     apiUrl = 'https://' + apiUrl;
-                 }
-
-                 const scanImage = async (imageBlob) => {
-                     const formData = new FormData(); 
-                     formData.append('image', imageBlob, 'image.jpg');
-                     
-                     const apiRes = await fetch(apiUrl + '/classify', { 
-                         method: 'POST', 
-                         body: formData,
-                         headers: { 'Authorization': `Bearer ${apiKey}` }
-                     });
-                     
-                     const rawData = await apiRes.text();
-                     
-                     if (!apiRes.ok) {
-                         console.error(`[SCANNER CRITICAL] API rejected request:`, rawData);
-                         return;
-                     }
-
-                     try {
-                         const parsedData = JSON.parse(rawData);
-                         
-                         // LOG THE RAW JSON TO SEE EXACTLY WHAT IT LOOKS LIKE
-                         console.log("[SCANNER RAW API RESPONSE]:", rawData);
-
-                         const scores = parseApiScores(parsedData);
-                         
-                         console.log(`[SCANNER DEBUG] Parsed Scores -> Porn: ${(scores.porn*100).toFixed(2)}% | Hentai: ${(scores.hentai*100).toFixed(2)}% | Sexy: ${(scores.sexy*100).toFixed(2)}% | Drawing: ${(scores.drawing*100).toFixed(2)}%`);
-                         
-                         const isHighDrawing = scores.drawing > 0.50 && s.nsfwMode === 'advanced';
-
-                         if (scores && (
-                             (scores.porn > threshold) ||
-                             (scores.hentai > threshold) || 
-                             (scores.sexy > threshold) || 
-                             isHighDrawing 
-                         )) { 
-                             isUnsafe = true; 
-                             detectedFlag = isHighDrawing ? 'hentai' : getTopFlag(scores); 
-                             console.log(`[SCANNER DEBUG] FLAGGED AS NSFW! Flag: ${detectedFlag}`);
-                         } else {
-                             console.log(`[SCANNER DEBUG] Passed. Image deemed SAFE.`);
-                         }
-                     } catch(e) {
-                         console.error("[SCANNER CRITICAL] Failed to parse API JSON. Raw Body:", rawData);
-                     }
-                 };
-
-                 if (isVideo || isGif) {
-                     const collageBuffer = await createVideoCollage(buffer, isGif);
-                     if (collageBuffer) {
-                         await scanImage(new Blob([collageBuffer], { type: 'image/jpeg' }));
-                     }
-                 } else {
-                     await scanImage(new Blob([imageBuffer], { type: contentType || 'image/jpeg' }));
-                 }
-             } catch (err) { console.error("[SCANNER ERROR] Catch block:", err); }
-         }
-
-         if (isUnsafe) {
-             await message.delete().catch(() => {});
-             await applyPunishment(message.member, s.nsfwPunish, s.nsfwDur, 'Posted NSFW media.', message, client);
-             const censoredFlag = censorWord(detectedFlag);
-             const desc = `<@${message.author.id}> That image is not allowed on this server, flagged \`${censoredFlag}\``;
-             const embed = await embeds.warning('NSFW Detected', desc, message.guild, client);
-             const warningMsg = await message.channel.send({ embeds: [embed] }).catch(e => console.error("Failed to send warning:", e));
-             if (warningMsg) setTimeout(() => warningMsg.delete().catch(() => {}), 5000);
+             // Call the advanced function from nsfw.js
+             const result = await scanMedia(mediaUrl, s, client);
+             
+             if (result.isUnsafe) {
+                 await message.delete().catch(() => {});
+                 await applyPunishment(message.member, s.nsfwPunish, s.nsfwDur, 'Posted NSFW media.', message, client);
+                 const censoredFlag = censorWord(result.detectedFlag);
+                 const desc = `<@${message.author.id}> That image is not allowed on this server, flagged \`${censoredFlag}\``;
+                 const embed = await embeds.warning('NSFW Detected', desc, message.guild, client);
+                 const warningMsg = await message.channel.send({ embeds: [embed] }).catch(e => console.error("Failed to send warning:", e));
+                 if (warningMsg) setTimeout(() => warningMsg.delete().catch(() => {}), 5000);
+                 break; // Stop scanning other attachments if one is bad
+             }
          }
       }
   } catch (error) {
