@@ -18,7 +18,8 @@ function getTopFlag(scores) {
 }
 
 async function createVideoCollage(videoBuffer, isGif = false) {
-    const tempVideoPath = path.join(os.tmpdir(), `vid_${Date.now()}.${isGif ? 'gif' : 'mp4'}`);
+    const ext = isGif ? 'gif' : 'mp4'; // FFmpeg can read mov as mp4 stream
+    const tempVideoPath = path.join(os.tmpdir(), `vid_${Date.now()}.${ext}`);
     const outputPath = path.join(os.tmpdir(), `collage_${Date.now()}.jpg`);
     fs.writeFileSync(tempVideoPath, videoBuffer);
 
@@ -47,9 +48,8 @@ async function createVideoCollage(videoBuffer, isGif = false) {
 async function scanMedia(url, s, client) {
     let isUnsafe = false;
     let detectedFlag = "nsfw";
-    let mediaUrls = [url]; // We just scan the URL passed to us
+    let mediaUrls = [url]; 
 
-    // Exact threshold from your old code
     const threshold = s.nsfwMode === 'advanced' ? 0.10 : (s.nsfwMode === 'moderate' ? 0.50 : 0.70);
 
     let apiUrl = process.env.NSFW_API_URL;
@@ -63,12 +63,13 @@ async function scanMedia(url, s, client) {
         try {
             let finalUrl = mediaUrl;
             
-            // EXACT LOGIC FROM OLD CODE: Scrape the page for the direct mp4/gif link
-            if (!finalUrl.match(/\.(jpeg|jpg|png|gif|mp4|webm)/i) && !finalUrl.includes('cdn.discordapp.com')) {
+            // If it's not a direct link AND not a Discord CDN link, try scraping
+            if (!finalUrl.match(/\.(jpeg|jpg|png|gif|mp4|webm|mov)/i) && !finalUrl.includes('cdn.discordapp.com')) {
                 console.log(`[SCANNER] Scraping link: ${finalUrl}`);
                 const webRes = await fetch(finalUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }); 
                 const html = await webRes.text();
-                const mediaMatch = html.match(/(https:\/\/[^"']+\.(?:gif|mp4|webm))/i);
+                // Added mov to the regex here too
+                const mediaMatch = html.match(/(https:\/\/[^"']+\.(?:gif|mp4|webm|mov))/i);
                 
                 if (mediaMatch) {
                     finalUrl = mediaMatch[0];
@@ -79,7 +80,8 @@ async function scanMedia(url, s, client) {
                 }
             }
             
-            const isVideo = finalUrl.toLowerCase().includes('.mp4') || finalUrl.toLowerCase().includes('.webm');
+            // FIXED: Added .mov to the video detection
+            const isVideo = finalUrl.toLowerCase().includes('.mp4') || finalUrl.toLowerCase().includes('.webm') || finalUrl.toLowerCase().includes('.mov');
             const isGif = finalUrl.toLowerCase().includes('.gif');
             
             const imageResponse = await fetch(finalUrl);
