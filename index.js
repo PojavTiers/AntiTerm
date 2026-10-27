@@ -143,6 +143,10 @@ client.once('clientReady', async () => {
   console.log(`✅ ${client.user.tag} is online!`);
   setActivity(client);
   
+  // DEBUG: Check if variables loaded
+  console.log(`[STARTUP] NSFW_API_URL loaded: ${process.env.NSFW_API_URL ? 'YES' : 'NO'}`);
+  console.log(`[STARTUP] API_KEY loaded: ${process.env.API_KEY ? 'YES' : 'NO'}`);
+  
   try { 
       await client.application.commands.set([
         { name: 'config', description: 'Open the interactive configuration menu' },
@@ -442,14 +446,15 @@ client.on('messageCreate', async (message) => {
                  const buffer = Buffer.from(imageBuffer);
                  
                  let apiUrl = process.env.NSFW_API_URL;
-                 let apiKey = process.env.NSFW_API_KEY;
+                 // FIXED: Looks for API_KEY
+                 let apiKey = process.env.API_KEY; 
                  
                  if (!apiUrl) {
                      console.error("[SCANNER CRITICAL] NSFW_API_URL is missing in Railway Variables!");
                      return;
                  }
                  if (!apiKey) {
-                     console.error("[SCANNER CRITICAL] NSFW_API_KEY is missing in Railway Variables!");
+                     console.error("[SCANNER CRITICAL] API_KEY is missing in Railway Variables!");
                      return;
                  }
 
@@ -469,7 +474,6 @@ client.on('messageCreate', async (message) => {
                          headers: { 'Authorization': `Bearer ${apiKey}` }
                      });
                      
-                     // NEW LOGGING: Print HTTP Status
                      console.log(`[SCANNER] HTTP Status: ${apiRes.status} ${apiRes.statusText}`);
 
                      const rawData = await apiRes.text();
