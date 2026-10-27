@@ -14,7 +14,7 @@ ffmpeg.setFfmpegPath(ffmpegPath);
 ffmpeg.setFfprobePath(ffprobePath);
 
 const OWNER_ID = '1450096764672544844';
-const nsfwCooldowns = new Map(); // Tracks cooldowns for silent deletion
+const nsfwCooldowns = new Map(); 
 
 const client = new Client({
   intents: [
@@ -38,7 +38,6 @@ async function generateConfigMenu(client, s, guild) {
     const onlineEmoji = await embeds.getEmoji(client, 'online_t', '🟢');
     const offlineEmoji = await embeds.getEmoji(client, 'offline_t', '🔴');
     const shieldEmoji = await embeds.getEmoji(client, 'shield', '🛡️');
-    
     const config1 = await embeds.getEmoji(client, 'config_1', '⚙️');
     const config2 = await embeds.getEmoji(client, 'config_2', '🛡️');
     const config3 = await embeds.getEmoji(client, 'config_3', '⚙️');
@@ -82,7 +81,6 @@ Pick a category below to configure your security settings.
 client.once('clientReady', async () => {
   console.log(`✅ ${client.user.tag} is online!`);
   setActivity(client);
-  
   try { 
       await client.application.commands.set([
         { name: 'config', description: 'Open the interactive configuration menu' },
@@ -99,7 +97,7 @@ client.on('guildCreate', async (guild) => {
             const owner = await guild.fetchOwner();
             if (owner && !dmCooldowns.has(owner.id)) {
                 dmCooldowns.add(owner.id);
-                await owner.send("This bot is private and cannot be added to your server.").catch(() => {});
+                await owner.send("This bot is private.").catch(() => {});
                 setTimeout(() => dmCooldowns.delete(owner.id), 5000);
             }
         } catch (e) {}
@@ -109,75 +107,57 @@ client.on('guildCreate', async (guild) => {
 
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.guild) return;
-  
   try {
       const s = await getSettings(interaction.guild.id);
 
-      // --- 1. MAIN CONFIG MENU (Category Selection) ---
       if (interaction.isStringSelectMenu() && interaction.customId === 'config_menu') {
           if (!isAuthorized(interaction.member, s)) return interaction.reply({ content: '❌ No permission.', ephemeral: true });
-          
           const action = interaction.values[0];
 
           if (action === 'action_scanner_menu') {
-              const menu = new StringSelectMenuBuilder()
-                  .setCustomId('scanner_submenu')
-                  .setPlaceholder('Select scanner action...')
-                  .addOptions([
-                      { label: 'Toggle Scanner', description: 'Turn the NSFW media scanner on or off', value: 'action_toggle_nsfw' },
-                      { label: 'Scanner Mode', description: 'Change the AI strictness', value: 'action_mode' },
-                      { label: 'Punishment', description: 'Set what happens to rule breakers', value: 'action_punish' },
-                      { label: 'Toggle Warn Message', description: 'Enable or disable the NSFW warning message', value: 'action_toggle_warn' }
-                  ]);
+              const menu = new StringSelectMenuBuilder().setCustomId('scanner_submenu').setPlaceholder('Select scanner action...').addOptions([
+                  { label: 'Toggle Scanner', description: 'Turn the NSFW media scanner on or off', value: 'action_toggle_nsfw' },
+                  { label: 'Scanner Mode', description: 'Change the AI strictness', value: 'action_mode' },
+                  { label: 'Punishment', description: 'Set what happens to rule breakers', value: 'action_punish' },
+                  { label: 'Toggle Warn Message', description: 'Enable or disable the NSFW warning', value: 'action_toggle_warn' }
+              ]);
               return interaction.reply({ components: [new ActionRowBuilder().addComponents(menu)], ephemeral: true });
           }
 
           if (action === 'action_filter_menu') {
-              const menu = new StringSelectMenuBuilder()
-                  .setCustomId('filter_submenu')
-                  .setPlaceholder('Select filter action...')
-                  .addOptions([
-                      { label: 'Add Filter Words', description: 'Add words to the unbypassable filter', value: 'action_add_word' },
-                      { label: 'Remove Filter Word', description: 'Remove a word from the text filter', value: 'action_remove_word' },
-                      { label: 'View Filtered Words', description: 'See all currently blocked words', value: 'action_list_words' }
-                  ]);
+              const menu = new StringSelectMenuBuilder().setCustomId('filter_submenu').setPlaceholder('Select filter action...').addOptions([
+                  { label: 'Add Filter Words', description: 'Add words to the filter', value: 'action_add_word' },
+                  { label: 'Remove Filter Word', description: 'Remove a word from the filter', value: 'action_remove_word' },
+                  { label: 'View Filtered Words', description: 'See all blocked words', value: 'action_list_words' }
+              ]);
               return interaction.reply({ components: [new ActionRowBuilder().addComponents(menu)], ephemeral: true });
           }
 
           if (action === 'action_whitelist_menu') {
-              const menu = new StringSelectMenuBuilder()
-                  .setCustomId('whitelist_submenu')
-                  .setPlaceholder('Select whitelist action...')
-                  .addOptions([
-                      { label: 'Add Whitelisted User', description: 'Allow a user to configure the bot', value: 'action_add_user' },
-                      { label: 'Remove Whitelisted User', description: 'Revoke a user\'s access to the bot', value: 'action_remove_user' },
-                      { label: 'View Whitelisted Users', description: 'See who can configure the bot', value: 'action_list_users' }
-                  ]);
+              const menu = new StringSelectMenuBuilder().setCustomId('whitelist_submenu').setPlaceholder('Select whitelist action...').addOptions([
+                  { label: 'Add Whitelisted User', description: 'Allow a user to configure', value: 'action_add_user' },
+                  { label: 'Remove Whitelisted User', description: 'Revoke access', value: 'action_remove_user' },
+                  { label: 'View Whitelisted Users', description: 'See authorized users', value: 'action_list_users' }
+              ]);
               return interaction.reply({ components: [new ActionRowBuilder().addComponents(menu)], ephemeral: true });
           }
       }
 
-      // --- 2. SUBMENUS & ACTIONS ---
       if (interaction.isStringSelectMenu() && ['scanner_submenu', 'filter_submenu', 'whitelist_submenu'].includes(interaction.customId)) {
           if (!isAuthorized(interaction.member, s)) return interaction.reply({ content: '❌ No permission.', ephemeral: true });
-          
           const action = interaction.values[0];
 
-          // NEW TOGGLE SCANNER LOGIC
           if (action === 'action_toggle_nsfw') {
-              const toggleMenu = new StringSelectMenuBuilder()
-                  .setCustomId('select_toggle')
-                  .setPlaceholder('Choose On or Off')
-                  .addOptions([
-                      { label: 'On', description: 'Enable the NSFW Scanner', value: 'toggle_on' },
-                      { label: 'Off', description: 'Disable the NSFW Scanner', value: 'toggle_off' }
-                  ]);
+              const toggleMenu = new StringSelectMenuBuilder().setCustomId('select_toggle').setPlaceholder('Choose On or Off').addOptions([
+                  { label: 'On', description: 'Enable the NSFW Scanner', value: 'toggle_on' },
+                  { label: 'Off', description: 'Disable the NSFW Scanner', value: 'toggle_off' }
+              ]);
               return interaction.reply({ components: [new ActionRowBuilder().addComponents(toggleMenu)], ephemeral: true });
           }
 
           if (action === 'action_add_word') {
               const modal = new ModalBuilder().setCustomId('modal_filter_add').setTitle('Add Filtered Words');
-              const input = new TextInputBuilder().setCustomId('word_input').setLabel('Words (Separate with commas)').setPlaceholder('word1, word2, word3').setStyle(TextInputStyle.Paragraph).setRequired(true);
+              const input = new TextInputBuilder().setCustomId('word_input').setLabel('Words (Separate with commas)').setStyle(TextInputStyle.Paragraph).setRequired(true);
               modal.addComponents(new ActionRowBuilder().addComponents(input));
               return interaction.showModal(modal);
           }
@@ -191,7 +171,7 @@ client.on('interactionCreate', async (interaction) => {
           }
 
           if (action === 'action_add_user') {
-              if (interaction.user.id !== interaction.guild.ownerId && interaction.user.id !== OWNER_ID) return interaction.reply({ content: '❌ Only the Server Owner can manage whitelisted users.', ephemeral: true });
+              if (interaction.user.id !== interaction.guild.ownerId && interaction.user.id !== OWNER_ID) return interaction.reply({ content: '❌ Only the Server Owner can manage this.', ephemeral: true });
               const modal = new ModalBuilder().setCustomId('modal_user_add').setTitle('Add Whitelisted User');
               const input = new TextInputBuilder().setCustomId('user_id').setLabel('User ID').setStyle(TextInputStyle.Short).setRequired(true);
               modal.addComponents(new ActionRowBuilder().addComponents(input));
@@ -199,7 +179,7 @@ client.on('interactionCreate', async (interaction) => {
           }
 
           if (action === 'action_remove_user') {
-              if (interaction.user.id !== interaction.guild.ownerId && interaction.user.id !== OWNER_ID) return interaction.reply({ content: '❌ Only the Server Owner can manage whitelisted users.', ephemeral: true });
+              if (interaction.user.id !== interaction.guild.ownerId && interaction.user.id !== OWNER_ID) return interaction.reply({ content: '❌ Only the Server Owner can manage this.', ephemeral: true });
               if (!s.allowedUsers || s.allowedUsers.length === 0) return interaction.reply({ content: '❌ No users to remove.', ephemeral: true });
               const modal = new ModalBuilder().setCustomId('modal_user_remove').setTitle('Remove Whitelisted User');
               const input = new TextInputBuilder().setCustomId('user_id').setLabel('User ID').setStyle(TextInputStyle.Short).setRequired(true);
@@ -210,8 +190,7 @@ client.on('interactionCreate', async (interaction) => {
           if (action === 'action_toggle_warn') {
               s.nsfwShowMsg = !s.nsfwShowMsg;
               await s.save();
-              await interaction.reply({ content: `✅ Warn message is now **${s.nsfwShowMsg ? 'ON' : 'OFF'}**.`, ephemeral: true });
-              return;
+              return interaction.reply({ content: `✅ Warn message is now **${s.nsfwShowMsg ? 'ON' : 'OFF'}**.`, ephemeral: true });
           }
 
           if (action === 'action_mode') {
@@ -243,15 +222,13 @@ client.on('interactionCreate', async (interaction) => {
           }
       }
 
-      // --- 3. SECONDARY SELECTS (Mode / Punish / Toggle) ---
       if (interaction.isStringSelectMenu() && ['select_mode', 'select_punish', 'select_toggle'].includes(interaction.customId)) {
           if (!isAuthorized(interaction.member, s)) return;
 
           if (interaction.customId === 'select_toggle') {
               s.antiNsfw = interaction.values[0] === 'toggle_on';
               await s.save();
-              await interaction.reply({ content: `✅ Scanner is now **${s.antiNsfw ? 'ON' : 'OFF'}**.`, ephemeral: true });
-              return;
+              return interaction.reply({ content: `✅ Scanner is now **${s.antiNsfw ? 'ON' : 'OFF'}**.`, ephemeral: true });
           }
 
           if (interaction.customId === 'select_mode') {
@@ -264,20 +241,17 @@ client.on('interactionCreate', async (interaction) => {
               } else {
                   s.nsfwMode = val;
                   await s.save();
-                  await interaction.reply({ content: `✅ Mode changed to **${s.nsfwMode.toUpperCase()}**.`, ephemeral: true });
-                  return;
+                  return interaction.reply({ content: `✅ Mode changed to **${s.nsfwMode.toUpperCase()}**.`, ephemeral: true });
               }
           }
 
           if (interaction.customId === 'select_punish') {
               s.nsfwPunish = interaction.values[0];
               await s.save();
-              await interaction.reply({ content: `✅ Punishment changed to **${s.nsfwPunish.toUpperCase()}**.`, ephemeral: true });
-              return;
+              return interaction.reply({ content: `✅ Punishment changed to **${s.nsfwPunish.toUpperCase()}**.`, ephemeral: true });
           }
       }
 
-      // --- 4. MODAL SUBMISSIONS ---
       if (interaction.isModalSubmit()) {
           if (!isAuthorized(interaction.member, s)) return;
           await interaction.deferReply({ ephemeral: true });
@@ -295,16 +269,15 @@ client.on('interactionCreate', async (interaction) => {
           if (interaction.customId === 'modal_filter_add') {
               const newWords = input.split(',').map(w => w.toLowerCase().trim()).filter(w => w.length > 0);
               if (!s.words) s.words = [];
-              let addedCount = 0;
-              let duplicateCount = 0;
+              let added = 0, dupes = 0;
               for (const word of newWords) {
-                  if (s.words.includes(word)) duplicateCount++;
-                  else { s.words.push(word); addedCount++; }
+                  if (s.words.includes(word)) dupes++;
+                  else { s.words.push(word); added++; }
               }
               await s.save();
-              let response = `✅ Successfully added **${addedCount}** word(s).`;
-              if (duplicateCount > 0) response += `\n⚠️ Skipped **${duplicateCount}**.`;
-              return interaction.editReply({ content: response });
+              let res = `✅ Added **${added}** word(s).`;
+              if (dupes > 0) res += `\n⚠️ Skipped **${dupes}**.`;
+              return interaction.editReply({ content: res });
           }
 
           if (interaction.customId === 'modal_filter_remove') {
@@ -337,7 +310,6 @@ client.on('interactionCreate', async (interaction) => {
           }
       }
 
-      // --- 5. SLASH COMMANDS ---
       if (interaction.isChatInputCommand()) {
           if (interaction.commandName === 'config') {
               await interaction.deferReply();
@@ -375,7 +347,6 @@ client.on('messageCreate', async (message) => {
       if (lowerContent === '$help') {
           const helpMenu = await getHelpContainer(1, client, 2);
           const msg = await message.reply({ components: [helpMenu], flags: MessageFlags.IsComponentsV2 });
-          
           const collector = msg.createMessageComponentCollector({ componentType: ComponentType.StringSelect, time: 60000 });
           collector.on('collect', async i => {
               if (i.user.id !== message.author.id) return i.reply({ content: "Not your menu.", ephemeral: true });
@@ -386,14 +357,10 @@ client.on('messageCreate', async (message) => {
           return;
       }
 
-      // TEXT FILTER
       if (s.words && s.words.length > 0) {
         let textToScan = message.content;
         if (message.messageSnapshots.size > 0) textToScan += " " + message.messageSnapshots.first().content;
-        let violation = false;
-        if (s.words.some(w => checkViolation(textToScan, w))) violation = true;
-
-        if (violation) {
+        if (s.words.some(w => checkViolation(textToScan, w))) {
             await message.delete().catch(() => {});
             const desc = `<@${message.author.id}> That word is not allowed on this server.`;
             const embed = await embeds.warning('Word Blocked', desc, message.guild, client);
@@ -403,10 +370,8 @@ client.on('messageCreate', async (message) => {
         }
       }
 
-      // AI SCANNER
       if (s.antiNsfw) {
          let mediaUrls = []; 
-
          if (message.embeds.length > 0) {
              const embed = message.embeds[0];
              if (embed.thumbnail && embed.thumbnail.url) mediaUrls.push(embed.thumbnail.url);
@@ -428,19 +393,15 @@ client.on('messageCreate', async (message) => {
 
          for (let mediaUrl of mediaUrls) {
              const result = await scanMedia(mediaUrl, s, client);
-             
              if (result.isUnsafe) {
                  await message.delete().catch(() => {});
                  await applyPunishment(message.member, s.nsfwPunish, s.nsfwDur, 'Posted NSFW media.', message, client);
                  
-                 // 2-SECOND COOLDOWN LOGIC
                  const now = Date.now();
                  const userCooldown = nsfwCooldowns.get(message.author.id);
                  
                  if (!userCooldown || now - userCooldown > 2000) {
                      nsfwCooldowns.set(message.author.id, now);
-                     
-                     // Only send warning if toggle is ON
                      if (s.nsfwShowMsg !== false) {
                          const censoredFlag = censorWord(result.detectedFlag);
                          const desc = `<@${message.author.id}> That image is not allowed on this server, flagged \`${censoredFlag}\``;
