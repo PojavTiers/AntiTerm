@@ -370,13 +370,18 @@ client.on('messageCreate', async (message) => {
         }
       }
 
+      // --- AI SCANNER (WITH EXPLICIT LOGGING) ---
       if (s.antiNsfw) {
+         console.log(`[SCANNER] Message received. Checking for media...`);
          let mediaUrls = []; 
+
          if (message.embeds.length > 0) {
-             const embed = message.embeds[0];
-             if (embed.thumbnail && embed.thumbnail.url) mediaUrls.push(embed.thumbnail.url);
-             if (embed.image && embed.image.url) mediaUrls.push(embed.image.url);
-             if (embed.video && embed.video.url) mediaUrls.push(embed.video.url);
+             for (const embed of message.embeds) {
+                 if (embed.thumbnail && embed.thumbnail.url) mediaUrls.push(embed.thumbnail.url);
+                 if (embed.image && embed.image.url) mediaUrls.push(embed.image.url);
+                 if (embed.video && embed.video.url) mediaUrls.push(embed.video.url);
+                 if (embed.url) mediaUrls.push(embed.url);
+             }
          }
          if (message.messageSnapshots.size > 0) {
              const snapshot = message.messageSnapshots.first();
@@ -388,12 +393,32 @@ client.on('messageCreate', async (message) => {
                  if (embed.video && embed.video.url) mediaUrls.push(embed.video.url);
              }
          }
-         if (message.attachments.size > 0) mediaUrls.push(message.attachments.first().url);
-         if (message.content.match(/https?:\/\/[^\s]+/)) mediaUrls.push(message.content.match(/https?:\/\/[^\s]+/)[0]);
+         if (message.attachments.size > 0) {
+             message.attachments.forEach(att => mediaUrls.push(att.url));
+         }
+         
+         // Grab ALL urls from raw text
+         const urlRegex = /(https?:\/\/[^\s]+)/g;
+         const foundUrls = message.content.match(urlRegex);
+         if (foundUrls) {
+             mediaUrls.push(...foundUrls);
+         }
+
+         // Deduplicate
+         mediaUrls = [...new Set(mediaUrls)];
+         
+         if (mediaUrls.length === 0) {
+             console.log(`[SCANNER] No URLs or attachments found in this message. Skipping.`);
+         } else {
+             console.log(`[SCANNER] Found ${mediaUrls.length} link(s) to scan:`, mediaUrls);
+         }
 
          for (let mediaUrl of mediaUrls) {
+             console.log(`[SCANNER] Starting scan for: ${mediaUrl}`);
              const result = await scanMedia(mediaUrl, s, client);
+             
              if (result.isUnsafe) {
+                 console.log(`[SCANNER] MEDIA IS UNSAFE. Deleting message.`);
                  await message.delete().catch(() => {});
                  await applyPunishment(message.member, s.nsfwPunish, s.nsfwDur, 'Posted NSFW media.', message, client);
                  
@@ -411,11 +436,13 @@ client.on('messageCreate', async (message) => {
                      }
                  }
                  break; 
+             } else {
+                 console.log(`[SCANNER] Media is safe.`);
              }
          }
       }
   } catch (error) {
-      console.error("Message Error:", error);
+      console.error("[MESSAGE CREATE ERROR]:", error);
   }
 });
 
