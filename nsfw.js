@@ -32,29 +32,14 @@ function parseApiScores(data) {
     return scores;
 }
 
-// This function now expects Discord's embed data to already be passed in
 async function resolveMediaUrl(url, embed) {
-    // 1. If it's a direct media link, return it immediately
     if (url.match(/\.(jpeg|jpg|png|gif|mp4|webm|webp)/i)) return url; 
-
-    // 2. Check if Discord's embed already has the direct video URL (Klipy/Tenor)
-    if (embed && embed.video && embed.video.url) {
-        console.log(`[SCANNER] Using Discord embed video URL: ${embed.video.url}`);
-        return embed.video.url;
-    }
-    if (embed && embed.image && embed.image.url) {
-        console.log(`[SCANNER] Using Discord embed image URL: ${embed.image.url}`);
-        return embed.image.url;
-    }
-    if (embed && embed.thumbnail && embed.thumbnail.url) {
-        console.log(`[SCANNER] Using Discord embed thumbnail URL: ${embed.thumbnail.url}`);
-        return embed.thumbnail.url;
-    }
+    if (embed && embed.video && embed.video.url) return embed.video.url;
+    if (embed && embed.image && embed.image.url) return embed.image.url;
+    if (embed && embed.thumbnail && embed.thumbnail.url) return embed.thumbnail.url;
     
-    // 3. Fallback: For other sites, try scraping (might still work for some)
     try {
-        console.log(`[SCANNER] Attempting to scrape: ${url}`);
-        const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' } });
+        const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
         if (!res.ok) return null;
         const html = await res.text();
         const mp4Match = html.match(/(https:\/\/[^"']+\.(?:mp4|webm))/i);
@@ -62,7 +47,6 @@ async function resolveMediaUrl(url, embed) {
         const gifMatch = html.match(/(https:\/\/[^"']+\.gif)/i);
         if (gifMatch) return gifMatch[0];
     } catch (e) {}
-    
     return null;
 }
 
@@ -76,10 +60,7 @@ async function generateCollage(videoBuffer, isGif = false) {
         await new Promise((resolve, reject) => {
             const command = ffmpeg(tempVideoPath)
                 .on('end', resolve)
-                .on('error', (err) => {
-                    console.error("[FFMPEG CRITICAL ERROR]:", err.message);
-                    reject(err);
-                });
+                .on('error', (err) => { reject(err); });
 
             command.inputOptions(['-f', ext, '-vsync', 'vfr']);
             command.outputOptions([
@@ -102,7 +83,43 @@ async function generateCollage(videoBuffer, isGif = false) {
     }
 }
 
-// UPDATED: Now accepts the message object to read embeds directly
+// NEW: Tries multiple ways to send the image to the API
+async function sendToApi(apiUrl, apiKey, buffer, mimeType) {
+    const formats = [
+        { field: 'image', filename: 'image.jpg', mime: 'image/jpeg' },
+        { field: 'file', filename: 'image.jpg', mime: 'image/jpeg' },
+        { field: 'image', filename: 'image.png', mime: 'image/png' },
+        { field: 'file', filename: 'image.png', mime: 'image/png' }
+    ];
+
+    for (const fmt of formats) {
+        try {
+            const formData = new FormData(); 
+            const blob = new Blob([buffer], { type: fmt.mime });
+            formData.append(fmt.field, blob, fmt.filename);
+            
+            const apiRes = await fetch(apiUrl + '/classify', { 
+                method: 'POST', 
+                body: formData,
+                headers: { 'Authorization': `Bearer ${apiKey}` }
+            });
+
+            if (apiRes.ok) {
+                const rawData = await apiRes.text();
+                const parsed = JSON.parse(rawData);
+                const scores = parseApiScores(parsed);
+                // Check if we actually got real scores and not all zeros
+                if (scores.porn > 0 || scores.hentai > 0 || scores.sexy > 0 || scores.drawing > 0 || scores.neutral > 0) {
+                    return scores;
+                }
+            }
+        } catch (e) {
+            // Ignore and try next format
+        }
+    }
+    return null; // All formats failed
+}
+
 async function scanMedia(url, s, client, message = null) {
     let isUnsafe = false;
     let detectedFlag = "nsfw";
@@ -118,17 +135,13 @@ async function scanMedia(url, s, client, message = null) {
     if (!apiUrl.startsWith('http')) apiUrl = 'https://' + apiUrl;
 
     try {
-        // Find the matching embed for this URL (if any)
         let matchingEmbed = null;
         if (message && message.embeds.length > 0) {
             matchingEmbed = message.embeds.find(e => e.url === url || (e.video && e.video.url === url) || (e.thumbnail && e.thumbnail.url === url));
         }
 
         const directUrl = await resolveMediaUrl(url, matchingEmbed);
-        if (!directUrl) {
-            console.log(`[SCANNER DEBUG] Could not resolve media link: ${url}`);
-            return { isUnsafe: false, detectedFlag: "nsfw" };
-        }
+        if (!directUrl) return { isUnsafe: false, detectedFlag: "nsfw" };
 
         const isVideo = directUrl.toLowerCase().includes('.mp4') || directUrl.toLowerCase().includes('.webm');
         const isGif = directUrl.toLowerCase().includes('.gif');
@@ -138,48 +151,25 @@ async function scanMedia(url, s, client, message = null) {
 
         if (buffer.length === 0) return { isUnsafe: false, detectedFlag: "nsfw" };
 
-        const sendToApi = async (blob, filename) => {
-            const formData = new FormData(); 
-            formData.append('image', blob, filename);
-            
-            const apiRes = await fetch(apiUrl + '/classify', { 
-                method: 'POST', 
-                body: formData,
-                headers: { 'Authorization': `Bearer ${apiKey}` }
-            });
-
-            if (!apiRes.ok) {
-                console.error(`[SCANNER CRITICAL] API rejected: ${apiRes.status} | ${await apiRes.text()}`);
-                return null;
-            }
-
-            const rawData = await apiRes.text();
-            try { return parseApiScores(JSON.parse(rawData)); } catch(e) { return null; }
-        };
+        let scores = null;
 
         if (isVideo || isGif) {
             const collage = await generateCollage(buffer, isGif);
             if (!collage) return { isUnsafe: false, detectedFlag: "nsfw" };
+            scores = await sendToApi(apiUrl, apiKey, collage, 'image/jpeg');
+        } else {
+            scores = await sendToApi(apiUrl, apiKey, buffer, 'image/jpeg');
+        }
 
-            const scores = await sendToApi(new Blob([collage], { type: 'image/jpeg' }), 'collage.jpg');
-            if (scores) {
-                console.log(`[SCANNER DEBUG] Scores -> Porn: ${(scores.porn*100).toFixed(2)}% | Hentai: ${(scores.hentai*100).toFixed(2)}% | Sexy: ${(scores.sexy*100).toFixed(2)}% | Drawing: ${(scores.drawing*100).toFixed(2)}%`);
-                const isHighDrawing = scores.drawing > 0.50 && s.nsfwMode === 'advanced';
-                if (scores.porn > threshold || scores.hentai > threshold || scores.sexy > threshold || isHighDrawing) {
-                    isUnsafe = true;
-                    detectedFlag = isHighDrawing ? 'hentai' : (scores.hentai > scores.porn && scores.hentai > scores.sexy ? 'hentai' : 'nsfw');
-                }
+        if (scores) {
+            console.log(`[SCANNER DEBUG] Scores -> Porn: ${(scores.porn*100).toFixed(2)}% | Hentai: ${(scores.hentai*100).toFixed(2)}% | Sexy: ${(scores.sexy*100).toFixed(2)}% | Drawing: ${(scores.drawing*100).toFixed(2)}% | Neutral: ${(scores.neutral*100).toFixed(2)}%`);
+            
+            if (scores.porn > threshold || scores.hentai > threshold || scores.sexy > threshold) {
+                isUnsafe = true;
+                detectedFlag = (scores.hentai > scores.porn && scores.hentai > scores.sexy) ? 'hentai' : 'nsfw';
             }
         } else {
-            const scores = await sendToApi(new Blob([buffer], { type: 'image/jpeg' }), 'image.jpg');
-            if (scores) {
-                console.log(`[SCANNER DEBUG] Scores -> Porn: ${(scores.porn*100).toFixed(2)}% | Hentai: ${(scores.hentai*100).toFixed(2)}% | Sexy: ${(scores.sexy*100).toFixed(2)}% | Drawing: ${(scores.drawing*100).toFixed(2)}%`);
-                const isHighDrawing = scores.drawing > 0.50 && s.nsfwMode === 'advanced';
-                if (scores.porn > threshold || scores.hentai > threshold || scores.sexy > threshold || isHighDrawing) {
-                    isUnsafe = true;
-                    detectedFlag = isHighDrawing ? 'hentai' : (scores.hentai > scores.porn && scores.hentai > scores.sexy ? 'hentai' : 'nsfw');
-                }
-            }
+            console.log(`[SCANNER DEBUG] API returned null for all formats. It might be down or rejecting the request.`);
         }
     } catch (err) {
         console.error("[SCANNER ERROR] Fetch/Scan failed:", err);
