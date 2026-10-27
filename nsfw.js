@@ -17,21 +17,43 @@ function getTopFlag(scores) {
     return highest;
 }
 
+// SMART COLLAGE: Grabs 3 frames from Start, Middle, and End based on video length
 async function createVideoCollage(videoBuffer, isGif = false) {
-    const ext = isGif ? 'gif' : 'mp4'; // FFmpeg can read mov as mp4 stream
+    const ext = isGif ? 'gif' : 'mp4'; 
     const tempVideoPath = path.join(os.tmpdir(), `vid_${Date.now()}.${ext}`);
     const outputPath = path.join(os.tmpdir(), `collage_${Date.now()}.jpg`);
     fs.writeFileSync(tempVideoPath, videoBuffer);
 
     try {
+        // 1. Get video duration first (takes milliseconds)
+        let duration = 6; // default if it fails
+        try {
+            const metadata = await new Promise((resolve, reject) => {
+                ffmpeg.ffprobe(tempVideoPath, (err, data) => {
+                    if (err) reject(err);
+                    else resolve(data);
+                });
+            });
+            if (metadata && metadata.format && metadata.format.duration) {
+                duration = metadata.format.duration;
+            }
+        } catch (e) { /* fallback to default */ }
+
+        // 2. Calculate timestamps (Start, Middle, End)
+        const start = 0;
+        const middle = Math.max(2, Math.floor(duration / 2)); 
+        const end = Math.max(4, Math.floor(duration - 2)); 
+
         await new Promise((resolve, reject) => {
             ffmpeg(tempVideoPath)
                 .on('end', resolve)
                 .on('error', reject)
                 .outputOptions([
-                    '-vf', 'select=\'gte(n,1)\',scale=320:240,tile=2x3',
+                    // Complex filter to grab frames from 3 specific timestamps:
+                    // 0s, Middle, and End. Uses 'select' with specific timestamps.
+                    '-vf', `select='eq(n\\,${start*30})+eq(n\\,${middle*30})+eq(n\\,${end*30})',scale=320:240:force_original_aspect_ratio=decrease,pad=320:240:(ow-iw)/2:(oh-ih)/2:color=black,tile=3x3`,
                     '-frames:v', '1',
-                    '-q:v', '5'
+                    '-q:v', '4'
                 ])
                 .save(outputPath);
         });
@@ -63,24 +85,19 @@ async function scanMedia(url, s, client) {
         try {
             let finalUrl = mediaUrl;
             
-            // If it's not a direct link AND not a Discord CDN link, try scraping
             if (!finalUrl.match(/\.(jpeg|jpg|png|gif|mp4|webm|mov)/i) && !finalUrl.includes('cdn.discordapp.com')) {
                 console.log(`[SCANNER] Scraping link: ${finalUrl}`);
                 const webRes = await fetch(finalUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }); 
                 const html = await webRes.text();
-                // Added mov to the regex here too
                 const mediaMatch = html.match(/(https:\/\/[^"']+\.(?:gif|mp4|webm|mov))/i);
                 
                 if (mediaMatch) {
                     finalUrl = mediaMatch[0];
-                    console.log(`[SCANNER] Found direct media: ${finalUrl}`);
                 } else {
-                    console.log(`[SCANNER] Could not find media in HTML.`);
                     continue;
                 }
             }
             
-            // FIXED: Added .mov to the video detection
             const isVideo = finalUrl.toLowerCase().includes('.mp4') || finalUrl.toLowerCase().includes('.webm') || finalUrl.toLowerCase().includes('.mov');
             const isGif = finalUrl.toLowerCase().includes('.gif');
             
@@ -90,14 +107,17 @@ async function scanMedia(url, s, client) {
             const buffer = Buffer.from(imageBuffer);
             
             if (isVideo || isGif) {
+                const startTime = Date.now();
                 const collageBuffer = await createVideoCollage(buffer, isGif);
+                
                 if (collageBuffer) {
                     const formData = new FormData(); 
                     formData.append('image', new Blob([collageBuffer], { type: 'image/jpeg' }), 'collage.jpg');
                     
-                    console.log(`[SCANNER] Sending collage to API...`);
                     const apiRes = await fetch(apiUrl + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
                     const rawText = await apiRes.text();
+                    
+                    console.log(`[SCANNER] Smart collage scanned in ${Date.now() - startTime}ms`);
                     console.log(`[SCANNER RAW RESPONSE]:`, rawText);
                     
                     const data = JSON.parse(rawText);
@@ -111,10 +131,8 @@ async function scanMedia(url, s, client) {
                 const formData = new FormData(); 
                 formData.append('image', blob, 'image.jpg');
                 
-                console.log(`[SCANNER] Sending image to API...`);
                 const response = await fetch(apiUrl + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
                 const rawText = await response.text();
-                console.log(`[SCANNER RAW RESPONSE]:`, rawText);
                 
                 const data = JSON.parse(rawText);
                 if (data.safe === false || (data.flags && data.flags.length > 0) || (data.scores && ((data.scores.nsfw > threshold) || (data.scores.sexy > threshold) || (data.scores.hentai > threshold) || (data.scores.porn > threshold)))) { 
