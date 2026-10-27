@@ -3,9 +3,33 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
+// Parser for the exact JSON structure your API returns
+function parseApiScores(data) {
+    const scores = { porn: 0, hentai: 0, sexy: 0, drawing: 0, neutral: 0 };
+    
+    // The API returns the scores inside a "predictions" object
+    if (data && data.predictions) {
+        for (const key of Object.keys(data.predictions)) {
+            const k = key.toLowerCase();
+            if (scores[k] !== undefined) {
+                scores[k] = parseFloat(data.predictions[key]);
+            }
+        }
+    } 
+    // Fallback just in case it returns an array
+    else if (data && Array.isArray(data.prediction)) {
+        for (const item of data.prediction) {
+            const className = (item.className || item.label || '').toLowerCase();
+            const prob = parseFloat(item.probability || 0);
+            if (scores[className] !== undefined) scores[className] = prob;
+        }
+    }
+    return scores;
+}
+
 function getTopFlag(scores) {
     if (!scores) return "nsfw";
-    const flags = ['porn', 'hentai', 'sexy', 'nsfw'];
+    const flags = ['porn', 'hentai', 'sexy', 'drawing'];
     let highest = "nsfw";
     let maxScore = 0;
     for (const flag of flags) {
@@ -14,6 +38,7 @@ function getTopFlag(scores) {
             highest = flag;
         }
     }
+    if (highest === 'drawing') return 'hentai'; 
     return highest;
 }
 
@@ -25,8 +50,7 @@ async function createVideoCollage(videoBuffer, isGif = false) {
     fs.writeFileSync(tempVideoPath, videoBuffer);
 
     try {
-        // 1. Get video duration first (takes milliseconds)
-        let duration = 6; // default if it fails
+        let duration = 6; 
         try {
             const metadata = await new Promise((resolve, reject) => {
                 ffmpeg.ffprobe(tempVideoPath, (err, data) => {
@@ -37,9 +61,8 @@ async function createVideoCollage(videoBuffer, isGif = false) {
             if (metadata && metadata.format && metadata.format.duration) {
                 duration = metadata.format.duration;
             }
-        } catch (e) { /* fallback to default */ }
+        } catch (e) { }
 
-        // 2. Calculate timestamps (Start, Middle, End)
         const start = 0;
         const middle = Math.max(2, Math.floor(duration / 2)); 
         const end = Math.max(4, Math.floor(duration - 2)); 
@@ -49,8 +72,6 @@ async function createVideoCollage(videoBuffer, isGif = false) {
                 .on('end', resolve)
                 .on('error', reject)
                 .outputOptions([
-                    // Complex filter to grab frames from 3 specific timestamps:
-                    // 0s, Middle, and End. Uses 'select' with specific timestamps.
                     '-vf', `select='eq(n\\,${start*30})+eq(n\\,${middle*30})+eq(n\\,${end*30})',scale=320:240:force_original_aspect_ratio=decrease,pad=320:240:(ow-iw)/2:(oh-ih)/2:color=black,tile=3x3`,
                     '-frames:v', '1',
                     '-q:v', '4'
@@ -86,7 +107,6 @@ async function scanMedia(url, s, client) {
             let finalUrl = mediaUrl;
             
             if (!finalUrl.match(/\.(jpeg|jpg|png|gif|mp4|webm|mov)/i) && !finalUrl.includes('cdn.discordapp.com')) {
-                console.log(`[SCANNER] Scraping link: ${finalUrl}`);
                 const webRes = await fetch(finalUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }); 
                 const html = await webRes.text();
                 const mediaMatch = html.match(/(https:\/\/[^"']+\.(?:gif|mp4|webm|mov))/i);
@@ -107,7 +127,6 @@ async function scanMedia(url, s, client) {
             const buffer = Buffer.from(imageBuffer);
             
             if (isVideo || isGif) {
-                const startTime = Date.now();
                 const collageBuffer = await createVideoCollage(buffer, isGif);
                 
                 if (collageBuffer) {
@@ -116,14 +135,20 @@ async function scanMedia(url, s, client) {
                     
                     const apiRes = await fetch(apiUrl + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
                     const rawText = await apiRes.text();
-                    
-                    console.log(`[SCANNER] Smart collage scanned in ${Date.now() - startTime}ms`);
                     console.log(`[SCANNER RAW RESPONSE]:`, rawText);
                     
                     const data = JSON.parse(rawText);
-                    if (data.safe === false || (data.scores && (data.scores.nsfw > threshold || data.scores.sexy > threshold || data.scores.hentai > threshold || data.scores.porn > threshold))) { 
+                    const scores = parseApiScores(data);
+                    
+                    console.log(`[SCANNER DEBUG] Porn: ${(scores.porn*100).toFixed(2)}% | Hentai: ${(scores.hentai*100).toFixed(2)}% | Sexy: ${(scores.sexy*100).toFixed(2)}% | Drawing: ${(scores.drawing*100).toFixed(2)}%`);
+
+                    // NUCLEAR OPTION: If it's highly confident it's an anime drawing in Advanced mode, flag it.
+                    const isHighDrawing = scores.drawing > 0.80 && s.nsfwMode === 'advanced';
+
+                    if (data.safe === false || (scores.nsfw > threshold || scores.sexy > threshold || scores.hentai > threshold || scores.porn > threshold) || isHighDrawing) { 
                         isUnsafe = true; 
-                        detectedFlag = getTopFlag(data.scores); 
+                        detectedFlag = isHighDrawing ? 'hentai' : getTopFlag(scores); 
+                        console.log(`[SCANNER DEBUG] FLAGGED AS NSFW! Flag: ${detectedFlag}`);
                     }
                 }
             } else {
@@ -133,11 +158,19 @@ async function scanMedia(url, s, client) {
                 
                 const response = await fetch(apiUrl + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
                 const rawText = await response.text();
+                console.log(`[SCANNER RAW RESPONSE]:`, rawText);
                 
                 const data = JSON.parse(rawText);
-                if (data.safe === false || (data.flags && data.flags.length > 0) || (data.scores && ((data.scores.nsfw > threshold) || (data.scores.sexy > threshold) || (data.scores.hentai > threshold) || (data.scores.porn > threshold)))) { 
+                const scores = parseApiScores(data);
+
+                console.log(`[SCANNER DEBUG] Porn: ${(scores.porn*100).toFixed(2)}% | Hentai: ${(scores.hentai*100).toFixed(2)}% | Sexy: ${(scores.sexy*100).toFixed(2)}% | Drawing: ${(scores.drawing*100).toFixed(2)}%`);
+
+                const isHighDrawing = scores.drawing > 0.80 && s.nsfwMode === 'advanced';
+
+                if (data.safe === false || (scores.nsfw > threshold || scores.sexy > threshold || scores.hentai > threshold || scores.porn > threshold) || isHighDrawing) { 
                     isUnsafe = true; 
-                    detectedFlag = getTopFlag(data.scores); 
+                    detectedFlag = isHighDrawing ? 'hentai' : getTopFlag(scores); 
+                    console.log(`[SCANNER DEBUG] FLAGGED AS NSFW! Flag: ${detectedFlag}`);
                 }
             }
         } catch (err) { console.error("[SCANNER ERROR]:", err); }
