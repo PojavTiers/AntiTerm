@@ -34,32 +34,38 @@ function censorWord(word) {
 }
 
 async function generateConfigMenu(client, s, guild) {
-    const settingsEmoji = await embeds.getEmoji(client, 'settings', '⚙️');
-    const onlineEmoji = await embeds.getEmoji(client, 'online_t', '🟢');
-    const offlineEmoji = await embeds.getEmoji(client, 'offline_t', '🔴');
-    const shieldEmoji = await embeds.getEmoji(client, 'shield', '🛡️');
+    // Fetch your custom emojis (with fallbacks just in case)
+    const settingsEmoji = await embeds.getEmoji(client, 'settings', '<:settings:1565005554441789490>');
+    const onlineEmoji = await embeds.getEmoji(client, 'online_t', '<:online_t:1562104525441994852>');
+    const offlineEmoji = await embeds.getEmoji(client, 'offline_t', '<:offline_t:1562104525441994853>'); // Fallback ID
+    const arrow2 = await embeds.getEmoji(client, 'arrow_right2', '<:arrow_right2:1561859478943432816>');
+    const arrow = await embeds.getEmoji(client, 'arrow_right', '<:arrow_right:1561754610467868802>');
+    
     const config1 = await embeds.getEmoji(client, 'config_1', '⚙️');
     const config2 = await embeds.getEmoji(client, 'config_2', '🛡️');
     const config3 = await embeds.getEmoji(client, 'config_3', '⚙️');
     
-    const status = s.antiNsfw ? `${onlineEmoji} **Enabled**` : `${offlineEmoji} **Disabled**`;
+    // Format dynamic values
+    const status = s.antiNsfw ? onlineEmoji : offlineEmoji;
+    const mode = s.nsfwMode === 'custom' ? `CUSTOM (${s.nsfwCustomThreshold})` : s.nsfwMode.toUpperCase();
+    const punish = s.nsfwPunish.toUpperCase();
+    const showMsg = s.nsfwShowMsg !== false ? 'Enabled' : 'Disabled';
     const wordCount = s.words ? s.words.length : 0;
     const userCount = s.allowedUsers ? s.allowedUsers.length : 0;
-    const showMsg = s.nsfwShowMsg !== false ? 'Yes' : 'No';
-    const thresh = s.nsfwMode === 'custom' ? `Custom (${s.nsfwCustomThreshold})` : s.nsfwMode.toUpperCase();
     
+    // EXACT TEXT YOU PROVIDED
     const textDisplay = new TextDisplayBuilder().setContent(`
-${shieldEmoji} **AntiTerm Configuration**
+${settingsEmoji} **NoNsfw Configuration**
 
-**NSFW Scanner**
-Status: ${status}
-Mode: ${thresh}
-Punishment: \`${s.nsfwPunish.toUpperCase()}\`
-Warn Message: \`${showMsg}\`
+**Media Scanner:**
+${arrow2} **Status:** ${status}
+${arrow2} **Mode:** \`${mode}\`
+${arrow2} **Punishment:** \`${punish}\`
+${arrow2} **Warn Message:** \`${showMsg}\`
 
 **Text Filter**
-Blocked Words: \`${wordCount}\`
-Whitelisted Users: \`${userCount}\`
+${arrow} Filtered Words: \`${wordCount}\`
+${arrow} Whitelisted Users: \`${userCount}\`
 
 Pick a category below to configure your security settings.
     `);
@@ -329,25 +335,13 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 client.on('messageCreate', async (message) => {
-  // 1. First check: Is it a bot or a DM?
   if (message.author.bot || !message.guild) return;
   
-  // 2. Log EXACTLY every message the bot sees
-  console.log(`\n[MESSAGE EVENT] Received message in guild: ${message.guild.id} from ${message.author.tag}`);
-  
   try {
-      // 3. Check Whitelist
       const whitelist = await getWhitelist();
-      console.log(`[MESSAGE EVENT] Whitelist loaded. Does it include this guild? ${whitelist.allowedGuilds.includes(message.guild.id)}`);
-      
-      if (!whitelist.allowedGuilds.includes(message.guild.id)) {
-          console.log(`[MESSAGE EVENT] IGNORING MESSAGE: Guild ${message.guild.id} is not in the ALLOWED_GUILDS list.`);
-          return;
-      }
+      if (!whitelist.allowedGuilds.includes(message.guild.id)) return;
 
       const s = await getSettings(message.guild.id);
-      console.log(`[MESSAGE EVENT] Settings loaded. NSFW Scanner is: ${s.antiNsfw ? 'ON' : 'OFF'}`);
-      
       const lowerContent = message.content.toLowerCase();
       
       if (lowerContent === '$config') {
@@ -382,18 +376,13 @@ client.on('messageCreate', async (message) => {
         }
       }
 
-      // --- AI SCANNER ---
       if (s.antiNsfw) {
-         console.log(`[SCANNER] NSFW Scanner is ON. Checking message content...`);
          let mediaUrls = []; 
-
          if (message.embeds.length > 0) {
-             for (const embed of message.embeds) {
-                 if (embed.thumbnail && embed.thumbnail.url) mediaUrls.push(embed.thumbnail.url);
-                 if (embed.image && embed.image.url) mediaUrls.push(embed.image.url);
-                 if (embed.video && embed.video.url) mediaUrls.push(embed.video.url);
-                 if (embed.url) mediaUrls.push(embed.url);
-             }
+             const embed = message.embeds[0];
+             if (embed.thumbnail && embed.thumbnail.url) mediaUrls.push(embed.thumbnail.url);
+             if (embed.image && embed.image.url) mediaUrls.push(embed.image.url);
+             if (embed.video && embed.video.url) mediaUrls.push(embed.video.url);
          }
          if (message.messageSnapshots.size > 0) {
              const snapshot = message.messageSnapshots.first();
@@ -405,30 +394,12 @@ client.on('messageCreate', async (message) => {
                  if (embed.video && embed.video.url) mediaUrls.push(embed.video.url);
              }
          }
-         if (message.attachments.size > 0) {
-             message.attachments.forEach(att => mediaUrls.push(att.url));
-         }
-         
-         const urlRegex = /(https?:\/\/[^\s]+)/g;
-         const foundUrls = message.content.match(urlRegex);
-         if (foundUrls) {
-             mediaUrls.push(...foundUrls);
-         }
-
-         mediaUrls = [...new Set(mediaUrls)];
-         
-         if (mediaUrls.length === 0) {
-             console.log(`[SCANNER] No URLs or attachments found in this message. Skipping scan.`);
-         } else {
-             console.log(`[SCANNER] Found ${mediaUrls.length} link(s) to scan:`, mediaUrls);
-         }
+         if (message.attachments.size > 0) mediaUrls.push(message.attachments.first().url);
+         if (message.content.match(/https?:\/\/[^\s]+/)) mediaUrls.push(message.content.match(/https?:\/\/[^\s]+/)[0]);
 
          for (let mediaUrl of mediaUrls) {
-             console.log(`[SCANNER] Starting scan for: ${mediaUrl}`);
              const result = await scanMedia(mediaUrl, s, client);
-             
              if (result.isUnsafe) {
-                 console.log(`[SCANNER] MEDIA IS UNSAFE. Deleting message.`);
                  await message.delete().catch(() => {});
                  await applyPunishment(message.member, s.nsfwPunish, s.nsfwDur, 'Posted NSFW media.', message, client);
                  
@@ -446,13 +417,11 @@ client.on('messageCreate', async (message) => {
                      }
                  }
                  break; 
-             } else {
-                 console.log(`[SCANNER] Media is safe.`);
              }
          }
       }
   } catch (error) {
-      console.error("[MESSAGE CREATE ERROR]:", error);
+      console.error("Message Error:", error);
   }
 });
 
