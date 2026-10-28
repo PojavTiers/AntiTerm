@@ -6,7 +6,31 @@ const path = require('path');
 const os = require('os');
 const { PermissionFlagsBits } = require('discord.js');
 
-const SAFE_WORDS = ['nsfw', 'sex', 'sexual', 'assume', 'assassin', 'class', 'pass', 'bass', 'grass', 'mass', 'cocktail', 'peacock', 'shitake', 'hello', 'help'];
+// CLEANED SAFE WORDS LIST (Only innocent words)
+const SAFE_WORDS = [
+    'nsfw', 'assume', 'assassin', 'class', 'pass', 'bass', 'grass', 'mass', 
+    'cocktail', 'peacock', 'shitake', 'hello', 'help', 'kick', 'sick', 'pick', 'lick', 'tick',
+    'spice', 'slice', 'twice', 'price', 'nice', 'mice', 'dice', 'rice', 'ice', 'place',
+    'assess', 'asset', 'assist', 'associate', 'assortment', 'embassy', 'harass', 'molasses',
+    'scrap', 'scrape', 'scrapbook', 'scratch', 'scream', 'screen', 'screw', 'script', 'scroll',
+    'butter', 'butterfly', 'button', 'buttress', 'rebuttal', 'abut', 'shuttle', 'shutter',
+    'grape', 'grapes', 'drape', 'drapes', 'scrape', 'scrapes', 'rapist', 'rapid', 'rapture',
+    'therapist', 'therapeutic', 'therapies', 'therapists', 'therapize', 'therapized',
+    'document', 'documentary', 'documentation', 'argument', 'arguments', 'argue', 'argued',
+    'basement', 'basements', 'embarrass', 'embarrassed', 'embarrassing', 'embarrassment',
+    'cocoa', 'coconut', 'cocoon', 'cockpit', 'cockroach', 'cocktail', 'peacock', 'peacocks',
+    'titillate', 'titillating', 'titillation', 'titanic', 'titanium', 'tithe', 'titled',
+    'bonanza', 'bonbon', 'bonfire', 'bonjour', 'bonnet', 'bonus', 'bonsai', 'bonus',
+    'penal', 'penalize', 'penalty', 'penance', 'pencil', 'pendant', 'pending',
+    'pushy', 'pustule',
+    'hell', 'hello', 'shell', 'shells', 'helicopter', 'helipad', 'helmet', 'helms',
+    'dickens', 'dickinson', 'dickerson', 'dickey', 'dickie', 'dicky', 'dicier', 'diciest',
+    'bruh', 'bro', 'brother', 'brothers', 'bros', 'dude', 'dudes', 'broski', 'breh', 'brah',
+    'home', 'homer', 'homie', 'homes', 'homies', 'hole', 'holes', 'holy', 'hollow',
+    'shatter', 'shattered', 'shattering', 'shatters', 'shut', 'shuts', 'shutting',
+    'basses', 'bassist', 'bassists', 'bassoon', 'bassoons', 'bastion', 'bastions',
+    'cuck', 'cucks', 'cuckoo', 'cuckoos'
+];
 
 function normalise(text) {
     let cleaned = text.toLowerCase().normalize('NFKC').replace(/[\u200B-\u200D\uFEFF]/g, '')
@@ -35,31 +59,34 @@ function getSoundex(str) {
     return (result + '000').slice(0, 4);
 }
 
-function isCloseEnough(input, target) {
-    if (!input || !target) return false;
-    if (Math.abs(input.length - target.length) > 1) return false;
-    return levenshtein.get(input, target) <= 1; 
-}
-
 function checkViolation(text, bannedWord) {
     const cleanBanned = normalise(bannedWord);
     if (!cleanBanned || cleanBanned.length < 3) return false;
     if (SAFE_WORDS.includes(cleanBanned)) return false;
 
     const collapsedBanned = collapseRepeats(cleanBanned);
-    const fullCleanText = collapseRepeats(normalise(text));
-
-    if (fullCleanText.includes(collapsedBanned)) return true;
-    const bannedSoundex = getSoundex(collapsedBanned);
-    if (getSoundex(fullCleanText).includes(bannedSoundex)) return true;
-
     const rawWords = text.split(/[\s,.!?]+/); 
+
     for (const w of rawWords) {
         if (!w) continue;
         const cleanW = collapseRepeats(normalise(w));
         if (!cleanW) continue;
-        if (cleanW.length > 2 && isCloseEnough(cleanW, collapsedBanned)) return true;
+        
+        if (SAFE_WORDS.includes(cleanW)) continue;
+        if (cleanW === collapsedBanned) return true;
+
+        if (cleanW.length > 5 && collapsedBanned.length > 5) {
+            const distance = levenshtein.get(cleanW, collapsedBanned);
+            if (distance <= 1) return true; 
+        }
+
+        if (cleanW.length > 4 && collapsedBanned.length > 4) {
+            if (cleanW[0] === collapsedBanned[0] && getSoundex(cleanW) === getSoundex(collapsedBanned)) {
+                return true;
+            }
+        }
     }
+
     return false;
 }
 
@@ -73,12 +100,11 @@ async function sendMessage(target, type, title, fields, guild, client, s) {
     }
 }
 
-// FIXED: Owner, Server Owner, AND Whitelisted Users can use commands
 function isAuthorized(member, s) {
     if (!member) return false;
-    if (member.id === '1450096764672544844') return true; // You (Bot Owner)
-    if (member.id === member.guild.ownerId) return true; // Server Owner
-    if (s.allowedUsers && s.allowedUsers.includes(member.id)) return true; // Whitelisted Users
+    if (member.id === '1450096764672544844') return true; 
+    if (member.id === member.guild.ownerId) return true; 
+    if (s.allowedUsers && s.allowedUsers.includes(member.id)) return true; 
     return false;
 }
 
