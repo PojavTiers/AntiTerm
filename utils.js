@@ -6,30 +6,33 @@ const path = require('path');
 const os = require('os');
 const { PermissionFlagsBits } = require('discord.js');
 
-// CLEANED SAFE WORDS LIST (Only innocent words)
+// STRICT SAFE WORDS LIST (ONLY guaranteed innocent dictionary words)
 const SAFE_WORDS = [
-    'nsfw', 'assume', 'assassin', 'class', 'pass', 'bass', 'grass', 'mass', 
-    'cocktail', 'peacock', 'shitake', 'hello', 'help', 'kick', 'sick', 'pick', 'lick', 'tick',
-    'spice', 'slice', 'twice', 'price', 'nice', 'mice', 'dice', 'rice', 'ice', 'place',
-    'assess', 'asset', 'assist', 'associate', 'assortment', 'embassy', 'harass', 'molasses',
+    // ass
+    'assume', 'assassin', 'class', 'pass', 'bass', 'grass', 'mass', 'assess', 'asset', 'assist', 
+    'associate', 'assortment', 'embassy', 'harass', 'molasses', 'basses', 'bassist', 'bassists', 
+    'bassoon', 'bassoons', 'bastion', 'bastions',
+    // cock
+    'cocktail', 'cocktails', 'peacock', 'peacocks', 'cockpit', 'cockroach', 'cockroaches',
+    // shit
+    'shitake', 'shitakes',
+    // dick
+    'dickens', 'dickinson', 'dickerson',
+    // hell
+    'hello', 'shell', 'shells', 'helicopter', 'helicopters', 'helipad', 'helipads', 'helmet', 'helmets', 'helms',
+    // tit
+    'titanic', 'titanium', 'tithe', 'titled', 'title', 'titles',
+    // pen
+    'penal', 'penalize', 'penalty', 'penance', 'pencil', 'pendant', 'pending',
+    // misc
     'scrap', 'scrape', 'scrapbook', 'scratch', 'scream', 'screen', 'screw', 'script', 'scroll',
     'butter', 'butterfly', 'button', 'buttress', 'rebuttal', 'abut', 'shuttle', 'shutter',
-    'grape', 'grapes', 'drape', 'drapes', 'scrape', 'scrapes', 'rapist', 'rapid', 'rapture',
     'therapist', 'therapeutic', 'therapies', 'therapists', 'therapize', 'therapized',
     'document', 'documentary', 'documentation', 'argument', 'arguments', 'argue', 'argued',
     'basement', 'basements', 'embarrass', 'embarrassed', 'embarrassing', 'embarrassment',
-    'cocoa', 'coconut', 'cocoon', 'cockpit', 'cockroach', 'cocktail', 'peacock', 'peacocks',
-    'titillate', 'titillating', 'titillation', 'titanic', 'titanium', 'tithe', 'titled',
-    'bonanza', 'bonbon', 'bonfire', 'bonjour', 'bonnet', 'bonus', 'bonsai', 'bonus',
-    'penal', 'penalize', 'penalty', 'penance', 'pencil', 'pendant', 'pending',
-    'pushy', 'pustule',
-    'hell', 'hello', 'shell', 'shells', 'helicopter', 'helipad', 'helmet', 'helms',
-    'dickens', 'dickinson', 'dickerson', 'dickey', 'dickie', 'dicky', 'dicier', 'diciest',
-    'bruh', 'bro', 'brother', 'brothers', 'bros', 'dude', 'dudes', 'broski', 'breh', 'brah',
-    'home', 'homer', 'homie', 'homes', 'homies', 'hole', 'holes', 'holy', 'hollow',
-    'shatter', 'shattered', 'shattering', 'shatters', 'shut', 'shuts', 'shutting',
-    'basses', 'bassist', 'bassists', 'bassoon', 'bassoons', 'bastion', 'bastions',
-    'cuck', 'cucks', 'cuckoo', 'cuckoos'
+    'cocoa', 'coconut', 'cocoon', 'bonanza', 'bonbon', 'bonfire', 'bonjour', 'bonnet', 
+    'bonus', 'bonsai', 'pushy', 'pustule', 'shatter', 'shattered', 'shattering', 'shatters', 
+    'shut', 'shuts', 'shutting'
 ];
 
 function normalise(text) {
