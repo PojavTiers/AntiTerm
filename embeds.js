@@ -23,7 +23,7 @@ async function getButtonEmoji(client, name, fallback) {
 }
 
 async function createEmbed(type, title, description, client, category = 'General', page = null, totalPages = null) {
-    let color = '#2B2D31'; // Default dark theme color
+    let color = '#2B2D31'; 
     let icon = ''; 
 
     if (type === 'success') { color = '#57F287'; icon = await getEmoji(client, 'success', '✅'); }
@@ -32,12 +32,12 @@ async function createEmbed(type, title, description, client, category = 'General
     if (type === 'info') { color = '#3498DB'; icon = await getEmoji(client, 'info', 'ℹ️'); }
     if (type === 'shield') { color = '#2B2D31'; icon = await getEmoji(client, 'shield', '🛡️'); }
 
-    let footerText = `AntiTerm Security | ${category}`;
+    // CHANGED FOOTER TO NoNsfw
+    let footerText = `NoNsfw Security | ${category}`;
     if (page && totalPages) {
-        footerText = `AntiTerm Security | Page ${page} / ${totalPages} | ${category}`;
+        footerText = `NoNsfw Security | Page ${page} / ${totalPages} | ${category}`;
     }
 
-    // If the emoji exists, put it in front. If not, just the description.
     const formattedDesc = icon ? `${icon} ${description}` : description;
 
     const embed = new EmbedBuilder()
