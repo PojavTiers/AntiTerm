@@ -48,7 +48,8 @@ async function scanMedia(url, s, client) {
     let isUnsafe = false;
     let detectedFlag = "nsfw";
 
-    const threshold = s.nsfwMode === 'advanced' ? 0.10 : (s.nsfwMode === 'moderate' ? 0.50 : 0.70);
+    let threshold = s.nsfwMode === 'advanced' ? 0.10 : (s.nsfwMode === 'moderate' ? 0.50 : 0.70);
+    if (s.nsfwMode === 'custom') threshold = s.nsfwCustomThreshold || 0.5;
 
     let apiUrl = process.env.NSFW_API_URL;
     if (!apiUrl) return { isUnsafe: false, detectedFlag: "nsfw" };
@@ -93,7 +94,11 @@ async function scanMedia(url, s, client) {
                 console.log(`[SCANNER RAW RESPONSE]:`, rawText);
                 
                 const data = JSON.parse(rawText);
-                if (data.safe === false || (data.scores && (data.scores.nsfw > threshold || data.scores.sexy > threshold || data.scores.hentai > threshold || data.scores.porn > threshold))) { 
+                
+                // FIXED: Ensure it's not a massive Neutral score (which means it's safe)
+                const isNeutral = data.top && data.top.className === 'Neutral' && data.top.probability > 0.80;
+                
+                if (!isNeutral && (data.safe === false || (data.scores && (data.scores.nsfw > threshold || data.scores.sexy > threshold || data.scores.hentai > threshold || data.scores.porn > threshold)))) { 
                     isUnsafe = true; 
                     detectedFlag = getTopFlag(data.scores); 
                 }
@@ -108,7 +113,11 @@ async function scanMedia(url, s, client) {
             console.log(`[SCANNER RAW RESPONSE]:`, rawText);
             
             const data = JSON.parse(rawText);
-            if (data.safe === false || (data.flags && data.flags.length > 0) || (data.scores && ((data.scores.nsfw > threshold) || (data.scores.sexy > threshold) || (data.scores.hentai > threshold) || (data.scores.porn > threshold)))) { 
+            
+            // FIXED: Ensure it's not a massive Neutral score (which means it's safe)
+            const isNeutral = data.top && data.top.className === 'Neutral' && data.top.probability > 0.80;
+
+            if (!isNeutral && (data.safe === false || (data.flags && data.flags.length > 0) || (data.scores && ((data.scores.nsfw > threshold) || (data.scores.sexy > threshold) || (data.scores.hentai > threshold) || (data.scores.porn > threshold))))) { 
                 isUnsafe = true; 
                 detectedFlag = getTopFlag(data.scores); 
             }
