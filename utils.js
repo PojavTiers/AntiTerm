@@ -6,25 +6,16 @@ const path = require('path');
 const os = require('os');
 const { PermissionFlagsBits } = require('discord.js');
 
-// STRICT SAFE WORDS LIST (ONLY guaranteed innocent dictionary words)
+// STRICT SAFE WORDS LIST
 const SAFE_WORDS = [
-    // ass
     'assume', 'assassin', 'class', 'pass', 'bass', 'grass', 'mass', 'assess', 'asset', 'assist', 
     'associate', 'assortment', 'embassy', 'harass', 'molasses', 'basses', 'bassist', 'bassists', 
     'bassoon', 'bassoons', 'bastion', 'bastions',
-    // cock
     'cocktail', 'cocktails', 'peacock', 'peacocks', 'cockpit', 'cockroach', 'cockroaches',
-    // shit
-    'shitake', 'shitakes',
-    // dick
-    'dickens', 'dickinson', 'dickerson',
-    // hell
+    'shitake', 'shitakes', 'dickens', 'dickinson', 'dickerson',
     'hello', 'shell', 'shells', 'helicopter', 'helicopters', 'helipad', 'helipads', 'helmet', 'helmets', 'helms',
-    // tit
     'titanic', 'titanium', 'tithe', 'titled', 'title', 'titles',
-    // pen
     'penal', 'penalize', 'penalty', 'penance', 'pencil', 'pendant', 'pending',
-    // misc
     'scrap', 'scrape', 'scrapbook', 'scratch', 'scream', 'screen', 'screw', 'script', 'scroll',
     'butter', 'butterfly', 'button', 'buttress', 'rebuttal', 'abut', 'shuttle', 'shutter',
     'therapist', 'therapeutic', 'therapies', 'therapists', 'therapize', 'therapized',
