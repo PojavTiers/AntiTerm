@@ -329,13 +329,25 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 client.on('messageCreate', async (message) => {
+  // 1. First check: Is it a bot or a DM?
   if (message.author.bot || !message.guild) return;
   
+  // 2. Log EXACTLY every message the bot sees
+  console.log(`\n[MESSAGE EVENT] Received message in guild: ${message.guild.id} from ${message.author.tag}`);
+  
   try {
+      // 3. Check Whitelist
       const whitelist = await getWhitelist();
-      if (!whitelist.allowedGuilds.includes(message.guild.id)) return;
+      console.log(`[MESSAGE EVENT] Whitelist loaded. Does it include this guild? ${whitelist.allowedGuilds.includes(message.guild.id)}`);
+      
+      if (!whitelist.allowedGuilds.includes(message.guild.id)) {
+          console.log(`[MESSAGE EVENT] IGNORING MESSAGE: Guild ${message.guild.id} is not in the ALLOWED_GUILDS list.`);
+          return;
+      }
 
       const s = await getSettings(message.guild.id);
+      console.log(`[MESSAGE EVENT] Settings loaded. NSFW Scanner is: ${s.antiNsfw ? 'ON' : 'OFF'}`);
+      
       const lowerContent = message.content.toLowerCase();
       
       if (lowerContent === '$config') {
@@ -370,9 +382,9 @@ client.on('messageCreate', async (message) => {
         }
       }
 
-      // --- AI SCANNER (WITH EXPLICIT LOGGING) ---
+      // --- AI SCANNER ---
       if (s.antiNsfw) {
-         console.log(`[SCANNER] Message received. Checking for media...`);
+         console.log(`[SCANNER] NSFW Scanner is ON. Checking message content...`);
          let mediaUrls = []; 
 
          if (message.embeds.length > 0) {
@@ -397,18 +409,16 @@ client.on('messageCreate', async (message) => {
              message.attachments.forEach(att => mediaUrls.push(att.url));
          }
          
-         // Grab ALL urls from raw text
          const urlRegex = /(https?:\/\/[^\s]+)/g;
          const foundUrls = message.content.match(urlRegex);
          if (foundUrls) {
              mediaUrls.push(...foundUrls);
          }
 
-         // Deduplicate
          mediaUrls = [...new Set(mediaUrls)];
          
          if (mediaUrls.length === 0) {
-             console.log(`[SCANNER] No URLs or attachments found in this message. Skipping.`);
+             console.log(`[SCANNER] No URLs or attachments found in this message. Skipping scan.`);
          } else {
              console.log(`[SCANNER] Found ${mediaUrls.length} link(s) to scan:`, mediaUrls);
          }
