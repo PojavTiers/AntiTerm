@@ -48,9 +48,13 @@ async function scanMedia(url, s, client) {
     let isUnsafe = false;
     let detectedFlag = "nsfw";
 
-    let threshold = 0.70;
-    if (s.nsfwMode === 'advanced') threshold = 0.01; 
-    else if (s.nsfwMode === 'moderate') threshold = 0.25;
+    // SAFE & STRICT THRESHOLDS
+    // Advanced: 0.50 (50%) - Only delete if it's more likely NSFW than not.
+    // Moderate: 0.75 (75%)
+    // Basic: 0.90 (90%)
+    let threshold = 0.90; 
+    if (s.nsfwMode === 'advanced') threshold = 0.50; 
+    else if (s.nsfwMode === 'moderate') threshold = 0.75;
     else if (s.nsfwMode === 'custom') threshold = s.nsfwCustomThreshold || 0.5;
 
     let apiUrl = process.env.NSFW_API_URL;
@@ -90,11 +94,8 @@ async function scanMedia(url, s, client) {
                 const data = JSON.parse(rawText);
                 const scores = data.predictions || data.scores || {};
                 
-                // SMART CHECK: Check if Neutral is too low OR if Porn/Sexy/Hentai is above threshold
-                const isNeutralLow = (scores.Neutral !== undefined && scores.Neutral < 0.85);
-                const isPornHigh = (scores.porn > threshold || scores.sexy > threshold || scores.hentai > threshold || (scores.Porn && scores.Porn > threshold) || (scores.Sexy && scores.Sexy > threshold));
-
-                if (data.safe === false || isNeutralLow || isPornHigh) { 
+                // ONLY DELETE IF EXPLICITLY HIGH
+                if (data.safe === false || (scores.porn > threshold || scores.sexy > threshold || scores.hentai > threshold || (scores.Porn && scores.Porn > threshold) || (scores.Sexy && scores.Sexy > threshold))) { 
                     isUnsafe = true; 
                     detectedFlag = getTopFlag(scores); 
                 }
@@ -110,11 +111,8 @@ async function scanMedia(url, s, client) {
             const data = JSON.parse(rawText);
             const scores = data.predictions || data.scores || {};
             
-            // SMART CHECK: Check if Neutral is too low OR if Porn/Sexy/Hentai is above threshold
-            const isNeutralLow = (scores.Neutral !== undefined && scores.Neutral < 0.85);
-            const isPornHigh = (scores.porn > threshold || scores.sexy > threshold || scores.hentai > threshold || (scores.Porn && scores.Porn > threshold) || (scores.Sexy && scores.Sexy > threshold));
-
-            if (data.safe === false || (data.flags && data.flags.length > 0) || isNeutralLow || isPornHigh) { 
+            // ONLY DELETE IF EXPLICITLY HIGH
+            if (data.safe === false || (data.flags && data.flags.length > 0) || (scores.porn > threshold || scores.sexy > threshold || scores.hentai > threshold || (scores.Porn && scores.Porn > threshold) || (scores.Sexy && scores.Sexy > threshold))) { 
                 isUnsafe = true; 
                 detectedFlag = getTopFlag(scores); 
             }
