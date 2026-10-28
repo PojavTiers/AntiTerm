@@ -29,7 +29,7 @@ async function createEmbed(type, title, description, client, category = 'General
     if (type === 'success') { color = '#57F287'; icon = await getEmoji(client, 'success', '✅'); }
     if (type === 'error') { color = '#ED4245'; icon = await getEmoji(client, 'error', '❌'); }
     if (type === 'warning') { color = '#FEE75C'; icon = await getEmoji(client, 'warning', '⚠️'); }
-    if (type === 'info') { color = '#3498DB'; icon = await getEmoji(client, 'info', 'ℹ️'); }
+    if (type === 'info') { color = '#FFDC00'; icon = await getEmoji(client, 'info', 'ℹ️'); }
     if (type === 'shield') { color = '#2B2D31'; icon = await getEmoji(client, 'shield', '🛡️'); }
 
     // CHANGED FOOTER TO NoNsfw
