@@ -23,7 +23,9 @@ const SAFE_WORDS = [
     'basement', 'basements', 'embarrass', 'embarrassed', 'embarrassing', 'embarrassment',
     'cocoa', 'coconut', 'cocoon', 'bonanza', 'bonbon', 'bonfire', 'bonjour', 'bonnet', 
     'bonus', 'bonsai', 'pushy', 'pustule', 'shatter', 'shattered', 'shattering', 'shatters', 
-    'shut', 'shuts', 'shutting'
+    'shut', 'shuts', 'shutting',
+    // NEW: Vision and visual words
+    'vision', 'visions', 'visual', 'visuals', 'visualize', 'visualized', 'division', 'divisions', 'revision', 'revisions'
 ];
 
 function normalise(text) {
@@ -69,7 +71,8 @@ function checkViolation(text, bannedWord) {
         if (SAFE_WORDS.includes(cleanW)) continue;
         if (cleanW === collapsedBanned) return true;
 
-        if (cleanW.length > 5 && collapsedBanned.length > 5) {
+        // FIXED: Levenshtein only for words longer than 8 letters
+        if (cleanW.length > 8 && collapsedBanned.length > 8) {
             const distance = levenshtein.get(cleanW, collapsedBanned);
             if (distance <= 1) return true; 
         }
