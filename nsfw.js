@@ -48,10 +48,10 @@ async function scanMedia(url, s, client) {
     let isUnsafe = false;
     let detectedFlag = "nsfw";
 
-    // SAFE THRESHOLDS
+    // CONSERVATIVE THRESHOLDS (Requires high confidence to delete)
     let threshold = 0.90; // Basic
-    if (s.nsfwMode === 'advanced') threshold = 0.60; // Advanced (60%)
-    else if (s.nsfwMode === 'moderate') threshold = 0.80; // Moderate (80%)
+    if (s.nsfwMode === 'advanced') threshold = 0.70; // Advanced (70%)
+    else if (s.nsfwMode === 'moderate') threshold = 0.85; // Moderate (85%)
     else if (s.nsfwMode === 'custom') threshold = s.nsfwCustomThreshold || 0.5;
 
     let apiUrl = process.env.NSFW_API_URL;
@@ -91,10 +91,8 @@ async function scanMedia(url, s, client) {
                 const data = JSON.parse(rawText);
                 const scores = data.predictions || data.scores || {};
                 
-                // SAFE GUARD: Ignore if the score is barely above the threshold, or if Neutral is extremely high
-                const isSafeNeutral = (scores.Neutral && scores.Neutral > 0.70);
-                
-                if (!isSafeNeutral && (data.safe === false || (scores.porn > threshold || scores.sexy > threshold || scores.hentai > threshold || (scores.Porn && scores.Porn > threshold) || (scores.Sexy && scores.Sexy > threshold)))) { 
+                // ONLY check Porn, Hentai, Sexy. Ignore Drawing entirely.
+                if (data.safe === false || (scores.porn > threshold || scores.sexy > threshold || scores.hentai > threshold || (scores.Porn && scores.Porn > threshold) || (scores.Sexy && scores.Sexy > threshold))) { 
                     isUnsafe = true; 
                     detectedFlag = getTopFlag(scores); 
                 }
@@ -110,9 +108,8 @@ async function scanMedia(url, s, client) {
             const data = JSON.parse(rawText);
             const scores = data.predictions || data.scores || {};
             
-            const isSafeNeutral = (scores.Neutral && scores.Neutral > 0.70);
-            
-            if (!isSafeNeutral && (data.safe === false || (data.flags && data.flags.length > 0) || (scores.porn > threshold || scores.sexy > threshold || scores.hentai > threshold || (scores.Porn && scores.Porn > threshold) || (scores.Sexy && scores.Sexy > threshold)))) { 
+            // ONLY check Porn, Hentai, Sexy. Ignore Drawing entirely.
+            if (data.safe === false || (data.flags && data.flags.length > 0) || (scores.porn > threshold || scores.sexy > threshold || scores.hentai > threshold || (scores.Porn && scores.Porn > threshold) || (scores.Sexy && scores.Sexy > threshold))) { 
                 isUnsafe = true; 
                 detectedFlag = getTopFlag(scores); 
             }
