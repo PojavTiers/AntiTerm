@@ -3,20 +3,6 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-function getTopFlag(scores) {
-    if (!scores) return "nsfw";
-    const flags = ['porn', 'hentai', 'sexy', 'nsfw'];
-    let highest = "nsfw";
-    let maxScore = 0;
-    for (const flag of flags) {
-        if (scores[flag] && scores[flag] > maxScore) {
-            maxScore = scores[flag];
-            highest = flag;
-        }
-    }
-    return highest;
-}
-
 async function createVideoCollage(videoBuffer, isGif = false) {
     const tempVideoPath = path.join(os.tmpdir(), `vid_${Date.now()}.${isGif ? 'gif' : 'mp4'}`);
     const outputPath = path.join(os.tmpdir(), `collage_${Date.now()}.jpg`);
@@ -48,21 +34,24 @@ async function scanMedia(url, s, client) {
     let isUnsafe = false;
     let detectedFlag = "nsfw";
 
-    // CONSERVATIVE THRESHOLDS (Requires high confidence to delete)
-    let threshold = 0.90; // Basic
-    if (s.nsfwMode === 'advanced') threshold = 0.70; // Advanced (70%)
-    else if (s.nsfwMode === 'moderate') threshold = 0.85; // Moderate (85%)
-    else if (s.nsfwMode === 'custom') threshold = s.nsfwCustomThreshold || 0.5;
+    // Sightengine is highly accurate. 80% threshold for Advanced mode is perfect.
+    let threshold = 0.80; 
+    if (s.nsfwMode === 'moderate') threshold = 0.90;
+    else if (s.nsfwMode === 'basic') threshold = 0.95;
+    else if (s.nsfwMode === 'custom') threshold = s.nsfwCustomThreshold || 0.8;
 
-    let apiUrl = process.env.NSFW_API_URL;
-    if (!apiUrl) return { isUnsafe: false, detectedFlag: "nsfw" };
-    if (!apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
-        apiUrl = 'https://' + apiUrl;
+    const apiUser = process.env.SIGHTENGINE_USER;
+    const apiSecret = process.env.SIGHTENGINE_SECRET;
+
+    if (!apiUser || !apiSecret) {
+        console.error("[SCANNER CRITICAL] Missing SIGHTENGINE_USER or SIGHTENGINE_SECRET variables.");
+        return { isUnsafe: false, detectedFlag: "nsfw" };
     }
 
     try {
         let finalUrl = url;
         
+        // Scrape Klipy/Tenor pages if necessary
         if (!finalUrl.match(/\.(jpeg|jpg|png|gif|mp4|webm|mov)/i) && !finalUrl.includes('cdn.discordapp.com')) {
             const webRes = await fetch(finalUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }); 
             const html = await webRes.text();
@@ -79,41 +68,55 @@ async function scanMedia(url, s, client) {
         const imageBuffer = await imageResponse.arrayBuffer();
         const buffer = Buffer.from(imageBuffer);
         
+        let imgBuffer = buffer;
         if (isVideo || isGif) {
             const collageBuffer = await createVideoCollage(buffer, isGif);
-            if (collageBuffer) {
-                const formData = new FormData(); 
-                formData.append('image', new Blob([collageBuffer], { type: 'image/jpeg' }), 'collage.jpg');
-                const apiRes = await fetch(apiUrl + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
-                const rawText = await apiRes.text();
-                console.log(`[SCANNER RAW RESPONSE]:`, rawText);
-                
-                const data = JSON.parse(rawText);
-                const scores = data.predictions || data.scores || {};
-                
-                // ONLY check Porn, Hentai, Sexy. Ignore Drawing entirely.
-                if (data.safe === false || (scores.porn > threshold || scores.sexy > threshold || scores.hentai > threshold || (scores.Porn && scores.Porn > threshold) || (scores.Sexy && scores.Sexy > threshold))) { 
-                    isUnsafe = true; 
-                    detectedFlag = getTopFlag(scores); 
-                }
+            if (!collageBuffer) return { isUnsafe: false, detectedFlag: "nsfw" };
+            imgBuffer = collageBuffer;
+        }
+
+        // Prepare FormData for Sightengine
+        const formData = new FormData(); 
+        formData.append('media', new Blob([imgBuffer], { type: 'image/jpeg' }), 'image.jpg');
+        formData.append('models', 'nudity-2.0'); // Using 2.0 for stability
+        formData.append('api_user', apiUser);
+        formData.append('api_secret', apiSecret);
+
+        const apiRes = await fetch('https://api.sightengine.com/1.0/check.json', { 
+            method: 'POST', 
+            body: formData 
+        });
+
+        const rawText = await apiRes.text();
+        console.log(`[SCANNER RAW RESPONSE]:`, rawText);
+        
+        const data = JSON.parse(rawText);
+        
+        if (data.status === 'failure') {
+            console.error(`[SCANNER API ERROR]: ${data.error.message}`);
+            return { isUnsafe: false, detectedFlag: "nsfw" };
+        }
+
+        // Parse the specific NSFW scores
+        if (data.nudity) {
+            const n = data.nudity;
+            // We only care about explicit sexual content. 
+            const nsfwScore = Math.max(
+                n.sexual_activity || 0, 
+                n.sexual_display || 0, 
+                n.erotica || 0
+            );
+            
+            console.log(`[SCANNER DEBUG] NSFW Score: ${(nsfwScore * 100).toFixed(2)}% | Threshold: ${(threshold * 100).toFixed(2)}%`);
+            
+            if (nsfwScore > threshold) {
+                isUnsafe = true;
+                detectedFlag = "nsfw";
             }
         } else {
-            const blob = new Blob([imageBuffer], { type: contentType || 'image/jpeg' }); 
-            const formData = new FormData(); 
-            formData.append('image', blob, 'image.jpg');
-            const response = await fetch(apiUrl + '/classify', { method: 'POST', headers: { 'Authorization': `Bearer ${process.env.API_KEY}` }, body: formData });
-            const rawText = await response.text();
-            console.log(`[SCANNER RAW RESPONSE]:`, rawText);
-            
-            const data = JSON.parse(rawText);
-            const scores = data.predictions || data.scores || {};
-            
-            // ONLY check Porn, Hentai, Sexy. Ignore Drawing entirely.
-            if (data.safe === false || (data.flags && data.flags.length > 0) || (scores.porn > threshold || scores.sexy > threshold || scores.hentai > threshold || (scores.Porn && scores.Porn > threshold) || (scores.Sexy && scores.Sexy > threshold))) { 
-                isUnsafe = true; 
-                detectedFlag = getTopFlag(scores); 
-            }
+            console.log(`[SCANNER DEBUG] Could not find 'nudity' object in response.`);
         }
+
     } catch (err) { 
         console.error("[SCANNER ERROR]:", err); 
     }
