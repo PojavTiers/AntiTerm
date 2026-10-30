@@ -69,6 +69,8 @@ function checkViolation(text, bannedWord) {
     if (SAFE_WORDS.includes(cleanBanned)) return false;
 
     const collapsedBanned = collapseRepeats(cleanBanned);
+
+    // 1. Standard word-by-word check
     const rawWords = text.split(/[\s,.!?]+/); 
 
     for (const w of rawWords) {
@@ -92,6 +94,13 @@ function checkViolation(text, bannedWord) {
             }
         }
     }
+
+    // 2. ANTI-SPACE BYPASS: Remove spaces and check if it EXACTLY matches the banned word
+    const unspacedText = text.replace(/\s+/g, '');
+    const cleanUnspaced = normalise(unspacedText);
+    
+    // This catches "t its" and "ti ts", but ignores "I have class" because "ihaveclass" !== "ass"
+    if (cleanUnspaced === collapsedBanned) return true;
 
     return false;
 }
