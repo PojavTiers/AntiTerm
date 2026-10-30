@@ -330,6 +330,31 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
+// --- FORCED PIC BLACKLIST ENFORCER ---
+client.on('guildMemberUpdate', async (oldMember, newMember) => {
+    try {
+        const s = await getSettings(newMember.guild.id);
+        if (!s.picBlacklistRole) return; // No blacklist role set
+
+        // Check if the member has the blacklist role
+        if (!newMember.roles.cache.has(s.picBlacklistRole)) return;
+
+        // Check if they gained any roles that allow attaching files
+        const rolesWithAttach = newMember.roles.cache.filter(r => 
+            r.id !== newMember.guild.id && 
+            r.permissions.has(PermissionFlagsBits.AttachFiles)
+        );
+
+        if (rolesWithAttach.size > 0) {
+            // They have the blacklist role AND roles that allow images. Strip the image roles.
+            await newMember.roles.remove(rolesWithAttach).catch(() => {});
+            console.log(`[PIC BLACKLIST ENFORCER] Stripped image roles from ${newMember.user.tag} because they are blacklisted.`);
+        }
+    } catch (e) {
+        console.error("Guild Member Update Error:", e);
+    }
+});
+
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild) return;
   
@@ -363,13 +388,10 @@ client.on('messageCreate', async (message) => {
       if (lowerContent.startsWith('$pbl') || lowerContent.startsWith('$picblacklist') || lowerContent.startsWith('$pic blacklist')) {
           if (!isAuthorized(message.member, s)) return sendMessage(message, 'error', 'Access Denied', ['You do not have permission.'], message.guild, client, s);
           
-          // Standardize the command to handle spaces
           let cleanContent = message.content.replace(/\$pic blacklist/i, '$pbl').replace(/\$picblacklist/i, '$pbl');
           const args = cleanContent.split(/ +/);
           const action = args[1]?.toLowerCase();
-          const target = args[2] || args[1]; 
 
-          // 1. $pbl role <role>
           if (action === 'role') {
               const role = message.mentions.roles.first();
               if (!role) return sendMessage(message, 'error', 'Invalid Role', ['You must mention a role. Example: `$pbl role @Muted`'], message.guild, client, s);
@@ -379,7 +401,6 @@ client.on('messageCreate', async (message) => {
               return sendMessage(message, 'success', 'Role Set', [`The Pic Blacklist role has been set to <@&${role.id}>.`], message.guild, client, s);
           }
 
-          // 2. $pbl list
           if (action === 'list') {
               if (!s.picBlacklistRole) return sendMessage(message, 'error', 'Not Configured', ['You must set the role first using `$pbl role @role`.'], message.guild, client, s);
               
@@ -390,7 +411,6 @@ client.on('messageCreate', async (message) => {
               return sendMessage(message, 'info', 'Pic Blacklist', [`**Currently Blacklisted Users:**`, list], message.guild, client, s);
           }
 
-          // 3. $pbl remove <user>
           if (action === 'remove') {
               const member = message.mentions.members.first();
               if (!member) return sendMessage(message, 'error', 'Invalid User', ['You must mention a user. Example: `$pbl remove @User`'], message.guild, client, s);
@@ -399,23 +419,19 @@ client.on('messageCreate', async (message) => {
                   await member.roles.remove(s.picBlacklistRole).catch(() => {});
               }
               
-              // Try to restore a standard "Member" role if it exists, to give them back image permissions.
               const memberRole = message.guild.roles.cache.find(r => r.name.toLowerCase() === 'member');
               if (memberRole) await member.roles.add(memberRole).catch(() => {});
               
               return sendMessage(message, 'success', 'User Restored', [`<@${member.id}> has been removed from the Pic Blacklist.`], message.guild, client, s);
           }
 
-          // 4. $pbl <user> (Blacklist them)
           const member = message.mentions.members.first();
           if (!member) return sendMessage(message, 'error', 'Invalid User', ['You must mention a user. Example: `$pbl @User`'], message.guild, client, s);
 
           if (!s.picBlacklistRole) return sendMessage(message, 'error', 'Not Configured', ['You must set the blacklist role first using `$pbl role @role`.'], message.guild, client, s);
 
-          // Add the blacklist role
           await member.roles.add(s.picBlacklistRole).catch(() => {});
 
-          // Remove all roles that have "Attach Files" or "Embed Links" so they can't send images
           const rolesToRemove = member.roles.cache.filter(r => 
               r.id !== message.guild.id && 
               (r.permissions.has(PermissionFlagsBits.AttachFiles) || r.permissions.has(PermissionFlagsBits.EmbedLinks))
