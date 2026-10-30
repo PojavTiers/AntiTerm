@@ -25,10 +25,16 @@ const SAFE_WORDS = [
     'bonus', 'bonsai', 'pushy', 'pustule', 'shatter', 'shattered', 'shattering', 'shatters', 
     'shut', 'shuts', 'shutting',
     'vision', 'visions', 'visual', 'visuals', 'visualize', 'visualized', 'division', 'divisions', 'revision', 'revisions',
-    // NEW ADDITIONS TO STOP FALSE POSITIVES
-    'delete', 'deleted', 'deleting', 'it', 'is', 'the', 'that', 'this', 'me', 'my', 'mine', 'you', 'your', 
+    
+    // MASSIVE ADDITION OF COMMON ENGLISH WORDS TO PREVENT FALSE POSITIVES
+    'delete', 'deleted', 'deleting', 'it', 'is', 'the', 'that', 'thats', 'this', 'me', 'my', 'mine', 'you', 'your', 
     'he', 'she', 'they', 'them', 'we', 'us', 'to', 'for', 'with', 'from', 'on', 'in', 'at', 'by', 'do', 'does',
-    'did', 'done', 'can', 'could', 'will', 'would', 'should', 'shall', 'may', 'might', 'must', 'am', 'are', 'was', 'were'
+    'did', 'done', 'can', 'could', 'will', 'would', 'should', 'shall', 'may', 'might', 'must', 'am', 'are', 'was', 'were',
+    'pretty', 'said', 'and', 'but', 'or', 'if', 'then', 'than', 'so', 'because', 'as', 'until', 'while', 'of', 'about',
+    'against', 'between', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'up', 'down', 'out', 'off',
+    'over', 'under', 'again', 'further', 'once', 'here', 'there', 'when', 'where', 'why', 'how', 'all', 'any', 'both',
+    'each', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'too', 'very',
+    'just', 'don', 'now', 'funny', 'gpt', 'haha', 'lol', 'lmao', 'bro', 'bruh', 'dude', 'yea', 'yeah', 'yes'
 ];
 
 function normalise(text) {
@@ -71,6 +77,7 @@ function checkViolation(text, bannedWord) {
         const cleanW = collapseRepeats(normalise(w));
         if (!cleanW) continue;
         
+        // If it's in the massive safe list, skip it immediately
         if (SAFE_WORDS.includes(cleanW)) continue;
         if (cleanW === collapsedBanned) return true;
 
