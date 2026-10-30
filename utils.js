@@ -24,7 +24,11 @@ const SAFE_WORDS = [
     'cocoa', 'coconut', 'cocoon', 'bonanza', 'bonbon', 'bonfire', 'bonjour', 'bonnet', 
     'bonus', 'bonsai', 'pushy', 'pustule', 'shatter', 'shattered', 'shattering', 'shatters', 
     'shut', 'shuts', 'shutting',
-    'vision', 'visions', 'visual', 'visuals', 'visualize', 'visualized', 'division', 'divisions', 'revision', 'revisions'
+    'vision', 'visions', 'visual', 'visuals', 'visualize', 'visualized', 'division', 'divisions', 'revision', 'revisions',
+    // NEW ADDITIONS TO STOP FALSE POSITIVES
+    'delete', 'deleted', 'deleting', 'it', 'is', 'the', 'that', 'this', 'me', 'my', 'mine', 'you', 'your', 
+    'he', 'she', 'they', 'them', 'we', 'us', 'to', 'for', 'with', 'from', 'on', 'in', 'at', 'by', 'do', 'does',
+    'did', 'done', 'can', 'could', 'will', 'would', 'should', 'shall', 'may', 'might', 'must', 'am', 'are', 'was', 'were'
 ];
 
 function normalise(text) {
@@ -70,8 +74,7 @@ function checkViolation(text, bannedWord) {
         if (SAFE_WORDS.includes(cleanW)) continue;
         if (cleanW === collapsedBanned) return true;
 
-        // FIXED: Levenshtein only for words longer than 5 letters
-        // This stops "me" from matching "jew"
+        // Levenshtein only for words longer than 5 letters
         if (cleanW.length > 5 && collapsedBanned.length > 5) {
             const distance = levenshtein.get(cleanW, collapsedBanned);
             if (distance <= 1) return true; 
