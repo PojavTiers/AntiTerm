@@ -25,8 +25,6 @@ const SAFE_WORDS = [
     'bonus', 'bonsai', 'pushy', 'pustule', 'shatter', 'shattered', 'shattering', 'shatters', 
     'shut', 'shuts', 'shutting',
     'vision', 'visions', 'visual', 'visuals', 'visualize', 'visualized', 'division', 'divisions', 'revision', 'revisions',
-    
-    // MASSIVE ADDITION OF COMMON ENGLISH WORDS TO PREVENT FALSE POSITIVES
     'delete', 'deleted', 'deleting', 'it', 'is', 'the', 'that', 'thats', 'this', 'me', 'my', 'mine', 'you', 'your', 
     'he', 'she', 'they', 'them', 'we', 'us', 'to', 'for', 'with', 'from', 'on', 'in', 'at', 'by', 'do', 'does',
     'did', 'done', 'can', 'could', 'will', 'would', 'should', 'shall', 'may', 'might', 'must', 'am', 'are', 'was', 'were',
@@ -34,7 +32,8 @@ const SAFE_WORDS = [
     'against', 'between', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'up', 'down', 'out', 'off',
     'over', 'under', 'again', 'further', 'once', 'here', 'there', 'when', 'where', 'why', 'how', 'all', 'any', 'both',
     'each', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'too', 'very',
-    'just', 'don', 'now', 'funny', 'gpt', 'haha', 'lol', 'lmao', 'bro', 'bruh', 'dude', 'yea', 'yeah', 'yes'
+    'just', 'don', 'now', 'funny', 'gpt', 'haha', 'lol', 'lmao', 'bro', 'bruh', 'dude', 'yea', 'yeah', 'yes',
+    'fixed', 'fixing', 'fix', 'fucked', 'fucking', 'fucker'
 ];
 
 function normalise(text) {
@@ -77,18 +76,17 @@ function checkViolation(text, bannedWord) {
         const cleanW = collapseRepeats(normalise(w));
         if (!cleanW) continue;
         
-        // If it's in the massive safe list, skip it immediately
         if (SAFE_WORDS.includes(cleanW)) continue;
         if (cleanW === collapsedBanned) return true;
 
-        // Levenshtein only for words longer than 5 letters
-        if (cleanW.length > 5 && collapsedBanned.length > 5) {
+        // Levenshtein ONLY for words longer than 8 letters
+        if (cleanW.length > 8 && collapsedBanned.length > 8) {
             const distance = levenshtein.get(cleanW, collapsedBanned);
             if (distance <= 1) return true; 
         }
 
-        // Soundex only for words longer than 4 letters
-        if (cleanW.length > 4 && collapsedBanned.length > 4) {
+        // Soundex only for words longer than 6 letters
+        if (cleanW.length > 6 && collapsedBanned.length > 6) {
             if (cleanW[0] === collapsedBanned[0] && getSoundex(cleanW) === getSoundex(collapsedBanned)) {
                 return true;
             }
