@@ -10,6 +10,7 @@ const settingsSchema = new mongoose.Schema({
     nsfwDur: { type: String, default: '1h' },
     words: { type: [String], default: [] },
     allowedUsers: { type: [String], default: [] },
+    picBlacklistRole: { type: String, default: null }, // NEW FIELD
     useEmbeds: { type: Boolean, default: true }
 });
 
