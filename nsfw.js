@@ -3,26 +3,44 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-async function createVideoCollage(videoBuffer, isGif = false) {
+// Extracts a SINGLE high-quality frame from the middle of the video/gif
+async function extractSingleFrame(videoBuffer, isGif = false) {
     const tempVideoPath = path.join(os.tmpdir(), `vid_${Date.now()}.${isGif ? 'gif' : 'mp4'}`);
-    const outputPath = path.join(os.tmpdir(), `collage_${Date.now()}.jpg`);
+    const outputPath = path.join(os.tmpdir(), `frame_${Date.now()}.jpg`);
     fs.writeFileSync(tempVideoPath, videoBuffer);
 
     try {
+        let duration = 3; // default fallback
+        try {
+            const metadata = await new Promise((resolve, reject) => {
+                ffmpeg.ffprobe(tempVideoPath, (err, data) => {
+                    if (err) reject(err);
+                    else resolve(data);
+                });
+            });
+            if (metadata && metadata.format && metadata.format.duration) {
+                duration = metadata.format.duration;
+            }
+        } catch (e) { }
+
+        // Grab a frame exactly in the middle of the video
+        const midpoint = duration / 2;
+
         await new Promise((resolve, reject) => {
             ffmpeg(tempVideoPath)
                 .on('end', resolve)
                 .on('error', reject)
+                .inputOptions(['-ss', midpoint.toString()]) // Jump to midpoint
                 .outputOptions([
-                    '-vf', 'select=\'gte(n,1)\',scale=320:240,tile=2x3',
-                    '-frames:v', '1',
-                    '-q:v', '5'
+                    '-frames:v', '1', // Grab exactly 1 frame
+                    '-q:v', '2'       // High quality (keeps the details sharp)
                 ])
                 .save(outputPath);
         });
+        
         return fs.readFileSync(outputPath);
     } catch (err) {
-        console.error("Collage Error:", err);
+        console.error("Frame Extraction Error:", err);
         return null;
     } finally {
         if (fs.existsSync(tempVideoPath)) fs.unlinkSync(tempVideoPath);
@@ -34,7 +52,7 @@ async function scanMedia(url, s, client) {
     let isUnsafe = false;
     let detectedFlag = "nsfw";
 
-    // Sightengine is highly accurate. 80% threshold for Advanced mode is perfect.
+    // Sightengine is highly accurate. 80% threshold for Advanced mode.
     let threshold = 0.80; 
     if (s.nsfwMode === 'moderate') threshold = 0.90;
     else if (s.nsfwMode === 'basic') threshold = 0.95;
@@ -44,7 +62,7 @@ async function scanMedia(url, s, client) {
     const apiSecret = process.env.SIGHTENGINE_SECRET;
 
     if (!apiUser || !apiSecret) {
-        console.error("[SCANNER CRITICAL] Missing SIGHTENGINE_USER or SIGHTENGINE_SECRET variables.");
+        console.error("[SCANNER CRITICAL] Missing SIGHTENGINE_USER or SIGHTENGINE_SECRET.");
         return { isUnsafe: false, detectedFlag: "nsfw" };
     }
 
@@ -69,16 +87,16 @@ async function scanMedia(url, s, client) {
         const buffer = Buffer.from(imageBuffer);
         
         let imgBuffer = buffer;
+        // Use the new high-quality single frame extraction
         if (isVideo || isGif) {
-            const collageBuffer = await createVideoCollage(buffer, isGif);
-            if (!collageBuffer) return { isUnsafe: false, detectedFlag: "nsfw" };
-            imgBuffer = collageBuffer;
+            const frameBuffer = await extractSingleFrame(buffer, isGif);
+            if (!frameBuffer) return { isUnsafe: false, detectedFlag: "nsfw" };
+            imgBuffer = frameBuffer;
         }
 
-        // Prepare FormData for Sightengine
         const formData = new FormData(); 
         formData.append('media', new Blob([imgBuffer], { type: 'image/jpeg' }), 'image.jpg');
-        formData.append('models', 'nudity-2.0'); // Using 2.0 for stability
+        formData.append('models', 'nudity-2.0'); 
         formData.append('api_user', apiUser);
         formData.append('api_secret', apiSecret);
 
@@ -97,10 +115,8 @@ async function scanMedia(url, s, client) {
             return { isUnsafe: false, detectedFlag: "nsfw" };
         }
 
-        // Parse the specific NSFW scores
         if (data.nudity) {
             const n = data.nudity;
-            // We only care about explicit sexual content. 
             const nsfwScore = Math.max(
                 n.sexual_activity || 0, 
                 n.sexual_display || 0, 
@@ -113,8 +129,6 @@ async function scanMedia(url, s, client) {
                 isUnsafe = true;
                 detectedFlag = "nsfw";
             }
-        } else {
-            console.log(`[SCANNER DEBUG] Could not find 'nudity' object in response.`);
         }
 
     } catch (err) { 
