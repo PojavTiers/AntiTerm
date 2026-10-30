@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, ComponentType, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder, ContainerBuilder, TextDisplayBuilder, SeparatorBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, ComponentType, MessageFlags, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, StringSelectMenuBuilder, ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, PermissionFlagsBits } = require('discord.js');
 const ffmpeg = require('fluent-ffmpeg');
 const ffmpegPath = require('ffmpeg-static');
 const ffprobePath = require('ffprobe-static').path;
@@ -34,18 +34,15 @@ function censorWord(word) {
 }
 
 async function generateConfigMenu(client, s, guild) {
-    // Fetch your custom emojis (with fallbacks just in case)
     const settingsEmoji = await embeds.getEmoji(client, 'settings', '<:settings:1565005554441789490>');
     const onlineEmoji = await embeds.getEmoji(client, 'online_t', '<:online_t:1562104525441994852>');
-    const offlineEmoji = await embeds.getEmoji(client, 'offline_t', '<:offline_t:1562104525441994853>'); // Fallback ID
+    const offlineEmoji = await embeds.getEmoji(client, 'offline_t', '<:offline_t:1562104525441994853>'); 
     const arrow2 = await embeds.getEmoji(client, 'arrow_right2', '<:arrow_right2:1561859478943432816>');
     const arrow = await embeds.getEmoji(client, 'arrow_right', '<:arrow_right:1561754610467868802>');
-    
     const config1 = await embeds.getEmoji(client, 'config_1', '⚙️');
     const config2 = await embeds.getEmoji(client, 'config_2', '🛡️');
     const config3 = await embeds.getEmoji(client, 'config_3', '⚙️');
     
-    // Format dynamic values
     const status = s.antiNsfw ? onlineEmoji : offlineEmoji;
     const mode = s.nsfwMode === 'custom' ? `CUSTOM (${s.nsfwCustomThreshold})` : s.nsfwMode.toUpperCase();
     const punish = s.nsfwPunish.toUpperCase();
@@ -53,7 +50,6 @@ async function generateConfigMenu(client, s, guild) {
     const wordCount = s.words ? s.words.length : 0;
     const userCount = s.allowedUsers ? s.allowedUsers.length : 0;
     
-    // EXACT TEXT YOU PROVIDED
     const textDisplay = new TextDisplayBuilder().setContent(`
 ${settingsEmoji} **NoNsfw Configuration**
 
@@ -325,7 +321,7 @@ client.on('interactionCreate', async (interaction) => {
           }
           if (interaction.commandName === 'help') {
               await interaction.deferReply();
-              const helpMenu = await getHelpContainer(1, client, 2);
+              const helpMenu = await getHelpContainer(1, client, 3);
               return interaction.editReply({ components: [helpMenu], flags: MessageFlags.IsComponentsV2 });
           }
       }
@@ -351,16 +347,85 @@ client.on('messageCreate', async (message) => {
       }
 
       if (lowerContent === '$help') {
-          const helpMenu = await getHelpContainer(1, client, 2);
+          const helpMenu = await getHelpContainer(1, client, 3);
           const msg = await message.reply({ components: [helpMenu], flags: MessageFlags.IsComponentsV2 });
           const collector = msg.createMessageComponentCollector({ componentType: ComponentType.StringSelect, time: 60000 });
           collector.on('collect', async i => {
               if (i.user.id !== message.author.id) return i.reply({ content: "Not your menu.", ephemeral: true });
-              const page = i.values[0] === 'help_page_2' ? 2 : 1;
-              const newMenu = await getHelpContainer(page, client, 2);
+              const page = i.values[0] === 'help_page_2' ? 2 : (i.values[0] === 'help_page_3' ? 3 : 1);
+              const newMenu = await getHelpContainer(page, client, 3);
               await i.update({ components: [newMenu], flags: MessageFlags.IsComponentsV2 });
           });
           return;
+      }
+
+      // --- PIC BLACKLIST COMMANDS ---
+      if (lowerContent.startsWith('$pbl') || lowerContent.startsWith('$picblacklist') || lowerContent.startsWith('$pic blacklist')) {
+          if (!isAuthorized(message.member, s)) return sendMessage(message, 'error', 'Access Denied', ['You do not have permission.'], message.guild, client, s);
+          
+          // Standardize the command to handle spaces
+          let cleanContent = message.content.replace(/\$pic blacklist/i, '$pbl').replace(/\$picblacklist/i, '$pbl');
+          const args = cleanContent.split(/ +/);
+          const action = args[1]?.toLowerCase();
+          const target = args[2] || args[1]; 
+
+          // 1. $pbl role <role>
+          if (action === 'role') {
+              const role = message.mentions.roles.first();
+              if (!role) return sendMessage(message, 'error', 'Invalid Role', ['You must mention a role. Example: `$pbl role @Muted`'], message.guild, client, s);
+              
+              s.picBlacklistRole = role.id;
+              await s.save();
+              return sendMessage(message, 'success', 'Role Set', [`The Pic Blacklist role has been set to <@&${role.id}>.`], message.guild, client, s);
+          }
+
+          // 2. $pbl list
+          if (action === 'list') {
+              if (!s.picBlacklistRole) return sendMessage(message, 'error', 'Not Configured', ['You must set the role first using `$pbl role @role`.'], message.guild, client, s);
+              
+              const members = await message.guild.members.fetch();
+              const blacklisted = members.filter(m => m.roles.cache.has(s.picBlacklistRole));
+              
+              const list = blacklisted.map(m => `<@${m.id}>`).join(', ') || 'None';
+              return sendMessage(message, 'info', 'Pic Blacklist', [`**Currently Blacklisted Users:**`, list], message.guild, client, s);
+          }
+
+          // 3. $pbl remove <user>
+          if (action === 'remove') {
+              const member = message.mentions.members.first();
+              if (!member) return sendMessage(message, 'error', 'Invalid User', ['You must mention a user. Example: `$pbl remove @User`'], message.guild, client, s);
+              
+              if (s.picBlacklistRole && member.roles.cache.has(s.picBlacklistRole)) {
+                  await member.roles.remove(s.picBlacklistRole).catch(() => {});
+              }
+              
+              // Try to restore a standard "Member" role if it exists, to give them back image permissions.
+              const memberRole = message.guild.roles.cache.find(r => r.name.toLowerCase() === 'member');
+              if (memberRole) await member.roles.add(memberRole).catch(() => {});
+              
+              return sendMessage(message, 'success', 'User Restored', [`<@${member.id}> has been removed from the Pic Blacklist.`], message.guild, client, s);
+          }
+
+          // 4. $pbl <user> (Blacklist them)
+          const member = message.mentions.members.first();
+          if (!member) return sendMessage(message, 'error', 'Invalid User', ['You must mention a user. Example: `$pbl @User`'], message.guild, client, s);
+
+          if (!s.picBlacklistRole) return sendMessage(message, 'error', 'Not Configured', ['You must set the blacklist role first using `$pbl role @role`.'], message.guild, client, s);
+
+          // Add the blacklist role
+          await member.roles.add(s.picBlacklistRole).catch(() => {});
+
+          // Remove all roles that have "Attach Files" or "Embed Links" so they can't send images
+          const rolesToRemove = member.roles.cache.filter(r => 
+              r.id !== message.guild.id && 
+              (r.permissions.has(PermissionFlagsBits.AttachFiles) || r.permissions.has(PermissionFlagsBits.EmbedLinks))
+          );
+          
+          if (rolesToRemove.size > 0) {
+              await member.roles.remove(rolesToRemove).catch(() => {});
+          }
+
+          return sendMessage(message, 'success', 'User Blacklisted', [`<@${member.id}> has been blacklisted and had their image roles removed.`], message.guild, client, s);
       }
 
       if (s.words && s.words.length > 0) {
