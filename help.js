@@ -32,21 +32,42 @@ ${infoDisplay} **Mode Guide**
 The text filter is mathematically unbypassable. It detects homoglyphs (fake letters), Leetspeak (w0rd), repeating letters (wooord), and phonetic typos (werd).
 `;
 
-    const currentDesc = page === 1 ? p1 : p2;
+    const p3 = `
+${infoDisplay} **Pic Blacklist Commands**
+
+**Configure Role:**
+\`$pbl role <@role>\`
+Sets the role assigned to blacklisted users.
+
+**Blacklist a User:**
+\`$pbl <@user>\`
+Removes image permissions and assigns the blacklist role.
+
+**Remove Blacklist:**
+\`$pbl remove <@user>\`
+Restores the user's ability to send images.
+
+**View List:**
+\`$pbl list\`
+Shows all currently blacklisted users.
+`;
+
+    const currentDesc = page === 1 ? p1 : (page === 2 ? p2 : p3);
 
     const selectMenu = new StringSelectMenuBuilder()
         .setCustomId('help_menu')
         .setPlaceholder('Choose a page...')
         .addOptions([
             { label: 'Dashboard Info', description: 'How to use the config menu', value: 'help_page_1', default: page === 1 },
-            { label: 'Mode Guide', description: 'Explaining the AI strictness', value: 'help_page_2', default: page === 2 }
+            { label: 'Mode Guide', description: 'Explaining the AI strictness', value: 'help_page_2', default: page === 2 },
+            { label: 'Pic Blacklist', description: 'Manage image permissions', value: 'help_page_3', default: page === 3 } // NEW PAGE
         ]);
 
     const row = new ActionRowBuilder().addComponents(selectMenu);
 
     return new ContainerBuilder()
         .addTextDisplayComponents(new TextDisplayBuilder().setContent(currentDesc))
-        .addActionRowComponents(row);
+        .addActionRowBuilder(row);
 }
 
 module.exports = { getHelpContainer };
